@@ -1,0 +1,35 @@
+{
+  "name": "code-smell-detection-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for static analysis / code smell detection (TypeScript, stdio transport)",
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "start": "node dist/server.js",
+    "lint": "eslint . --ext .ts",
+    "clean": "rimraf dist"
+  },
+  "keywords": [
+    "mcp",
+    "static-analysis",
+    "code-smell",
+    "pyexamine"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.4.0",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.0.0",
+    "rimraf": "^4.0.0",
+    "eslint": "^8.0.0",
+    "@typescript-eslint/parser": "^5.0.0",
+    "@typescript-eslint/eslint-plugin": "^5.0.0"
+  }
+}
