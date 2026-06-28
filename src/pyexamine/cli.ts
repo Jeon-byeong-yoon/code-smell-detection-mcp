@@ -100,18 +100,18 @@ function getRequiredArg(values: Map<string, string>, key: string): string {
   return value;
 }
 
-async function loadRawPyExamineInput(inputPath: string, inputFormat?: 'json' | 'csv') {
+async function loadRawPyExamineInput(inputPath: string, inputFormat?: 'json' | 'csv'): Promise<RawPyExamineResultItem[] | Record<string, unknown>> {
   const fileContent = await readFile(resolve(inputPath), 'utf8');
   const format = inputFormat ?? inferInputFormat(inputPath);
   if (format === 'csv') return parseCsvResults(fileContent);
-  return JSON.parse(fileContent) as RawPyExamineResultItem[] | any;
+  return JSON.parse(fileContent) as RawPyExamineResultItem[] | Record<string, unknown>;
 }
 
-function extractResults(input: any): RawPyExamineResultItem[] {
+function extractResults(input: RawPyExamineResultItem[] | Record<string, unknown>): RawPyExamineResultItem[] {
   if (Array.isArray(input)) return input;
-  if (Array.isArray(input.results)) return input.results;
-  if (Array.isArray(input.pyExamineResult)) return input.pyExamineResult;
-  if (Array.isArray(input.smells)) return input.smells;
+  if (input && typeof input === 'object' && 'results' in input && Array.isArray(input.results)) return input.results;
+  if (input && typeof input === 'object' && 'pyExamineResult' in input && Array.isArray(input.pyExamineResult)) return input.pyExamineResult;
+  if (input && typeof input === 'object' && 'smells' in input && Array.isArray(input.smells)) return input.smells;
   throw new Error('Unable to find smell results array. Expected root array or one of: results, pyExamineResult, smells.');
 }
 
@@ -141,7 +141,7 @@ function parseCsvResults(content: string): RawPyExamineResultItem[] {
   });
 }
 
-function mapCsvRecordToRawResult(record: Record<string, string>) {
+function mapCsvRecordToRawResult(record: Record<string, string>): RawPyExamineResultItem {
   return {
     category: getRecordValue(record, 'type') ?? getRecordValue(record, 'category'),
     name: getRecordValue(record, 'name') ?? getRecordValue(record, 'smell') ?? getRecordValue(record, 'rule'),
@@ -158,7 +158,7 @@ function getRecordValue(record: Record<string, string>, key: string): string | u
   const matchedKey = Object.keys(record).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
   if (!matchedKey) return undefined;
   const value = record[matchedKey]?.trim();
-  return value ? value : undefined;
+  return value?.length ? value : undefined;
 }
 
 function parseOptionalNumber(value?: string): number | undefined {
@@ -173,33 +173,6 @@ interface CsvCharResult {
   pushCell: boolean;
   pushRow: boolean;
   skipNext: boolean;
-}
-
-function processCsvChar(
-  char: string,
-  nextChar: string | undefined,
-  insideQuotes: boolean,
-  currentCell: string
-): CsvCharResult {
-  if (char === '"') {
-    return handleQuote(nextChar, insideQuotes, currentCell);
-  }
-
-  if (char === ',') {
-    return handleComma(insideQuotes, currentCell);
-  }
-
-  if (char === '\n' || char === '\r') {
-    return handleNewline(char, nextChar, currentCell);
-  }
-
-  return {
-    insideQuotes,
-    currentCell: currentCell + char,
-    pushCell: false,
-    pushRow: false,
-    skipNext: false,
-  };
 }
 
 function handleQuote(nextChar: string | undefined, insideQuotes: boolean, currentCell: string): CsvCharResult {
@@ -251,6 +224,33 @@ function handleNewline(char: string, nextChar: string | undefined, currentCell: 
     pushCell: false,
     pushRow: true,
     skipNext: shouldSkip,
+  };
+}
+
+function processCsvChar(
+  char: string,
+  nextChar: string | undefined,
+  insideQuotes: boolean,
+  currentCell: string
+): CsvCharResult {
+  if (char === '"') {
+    return handleQuote(nextChar, insideQuotes, currentCell);
+  }
+
+  if (char === ',') {
+    return handleComma(insideQuotes, currentCell);
+  }
+
+  if (char === '\n' || char === '\r') {
+    return handleNewline(char, nextChar, currentCell);
+  }
+
+  return {
+    insideQuotes,
+    currentCell: currentCell + char,
+    pushCell: false,
+    pushRow: false,
+    skipNext: false,
   };
 }
 
