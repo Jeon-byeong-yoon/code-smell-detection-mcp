@@ -167,6 +167,93 @@ function parseOptionalNumber(value?: string): number | undefined {
   return Number.isNaN(parsedValue) ? undefined : parsedValue;
 }
 
+interface CsvCharResult {
+  insideQuotes: boolean;
+  currentCell: string;
+  pushCell: boolean;
+  pushRow: boolean;
+  skipNext: boolean;
+}
+
+function processCsvChar(
+  char: string,
+  nextChar: string | undefined,
+  insideQuotes: boolean,
+  currentCell: string
+): CsvCharResult {
+  if (char === '"') {
+    return handleQuote(nextChar, insideQuotes, currentCell);
+  }
+
+  if (char === ',') {
+    return handleComma(insideQuotes, currentCell);
+  }
+
+  if (char === '\n' || char === '\r') {
+    return handleNewline(char, nextChar, currentCell);
+  }
+
+  return {
+    insideQuotes,
+    currentCell: currentCell + char,
+    pushCell: false,
+    pushRow: false,
+    skipNext: false,
+  };
+}
+
+function handleQuote(nextChar: string | undefined, insideQuotes: boolean, currentCell: string): CsvCharResult {
+  if (insideQuotes && nextChar === '"') {
+    return {
+      insideQuotes,
+      currentCell: currentCell + '"',
+      pushCell: false,
+      pushRow: false,
+      skipNext: true,
+    };
+  }
+
+  return {
+    insideQuotes: !insideQuotes,
+    currentCell,
+    pushCell: false,
+    pushRow: false,
+    skipNext: false,
+  };
+}
+
+function handleComma(insideQuotes: boolean, currentCell: string): CsvCharResult {
+  if (insideQuotes) {
+    return {
+      insideQuotes,
+      currentCell: currentCell + ',',
+      pushCell: false,
+      pushRow: false,
+      skipNext: false,
+    };
+  }
+
+  return {
+    insideQuotes,
+    currentCell,
+    pushCell: true,
+    pushRow: false,
+    skipNext: false,
+  };
+}
+
+function handleNewline(char: string, nextChar: string | undefined, currentCell: string): CsvCharResult {
+  const shouldSkip = char === '\r' && nextChar === '\n';
+
+  return {
+    insideQuotes: false,
+    currentCell,
+    pushCell: false,
+    pushRow: true,
+    skipNext: shouldSkip,
+  };
+}
+
 function parseCsv(content: string): string[][] {
   const rows: string[][] = [];
   let currentRow: string[] = [];
@@ -176,32 +263,27 @@ function parseCsv(content: string): string[][] {
   for (let index = 0; index < content.length; index += 1) {
     const char = content[index];
     const nextChar = content[index + 1];
-    if (char === '"') {
-      if (insideQuotes && nextChar === '"') {
-        currentCell += '"';
-        index += 1;
-      } else {
-        insideQuotes = !insideQuotes;
-      }
-      continue;
+
+    const result = processCsvChar(char, nextChar, insideQuotes, currentCell);
+
+    if (result.skipNext) {
+      index += 1;
     }
 
-    if (char === ',' && !insideQuotes) {
+    insideQuotes = result.insideQuotes;
+    currentCell = result.currentCell;
+
+    if (result.pushCell) {
       currentRow.push(currentCell);
       currentCell = '';
-      continue;
     }
 
-    if ((char === '\n' || char === '\r') && !insideQuotes) {
-      if (char === '\r' && nextChar === '\n') index += 1;
+    if (result.pushRow) {
       currentRow.push(currentCell);
       rows.push(currentRow);
       currentRow = [];
       currentCell = '';
-      continue;
     }
-
-    currentCell += char;
   }
 
   if (currentCell.length > 0 || currentRow.length > 0) {
