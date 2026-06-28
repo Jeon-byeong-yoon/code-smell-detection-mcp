@@ -36,7 +36,10 @@ npm start
 복사하여 `.env`로 사용:
 - `ANALYSIS_API_BASE_URL` (예: http://localhost:13000/api)
 - `REQUEST_TIMEOUT_MS`
-- `DEFAULT_TEAM_PROJECT_ID`
+- `METRICS_API_BASE_URL` (예: http://localhost:14000)
+- `METRICS_API_KEY` (필요 시)
+- `METRICS_DEFAULT_TEAM_PROJECT_ID`
+- `METRICS_REQUEST_TIMEOUT_MS`
 
 ## 원본 코드 분리 가이드
 - 복사할 파일: `code-vi-internal/code-vi-back/src/mcp/codevi-metrics-server.ts`

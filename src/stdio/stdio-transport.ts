@@ -18,10 +18,13 @@ export function createStdIoTransport(): Transport {
   });
 
   rl.on('line', async (line) => {
+    let id: string | undefined;
+
     try {
       const msg = JSON.parse(line);
       // expected shape { id, tool, params }
-      const { id, tool, params } = msg;
+      const { tool, params } = msg;
+      id = msg.id;
       const h = handlers[tool];
       if (!h) {
         const resp = { id, error: `unknown tool ${tool}` };
@@ -32,8 +35,11 @@ export function createStdIoTransport(): Transport {
       const resp = { id, result };
       process.stdout.write(JSON.stringify(resp) + '\n');
     } catch (e) {
-      // ignore/console
       console.error('stdin parse error', e);
+      const message = e instanceof Error ? e.message : String(e);
+      if (id) {
+        process.stdout.write(JSON.stringify({ id, error: message }) + '\n');
+      }
     }
   });
 

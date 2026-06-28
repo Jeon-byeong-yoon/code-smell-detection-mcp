@@ -1,16 +1,46 @@
 const { spawn } = require('child_process');
+const http = require('http');
 
 function writeLine(proc, obj) {
   proc.stdin.write(JSON.stringify(obj) + '\n');
 }
 
+function startMockMetricsApi() {
+  const server = http.createServer((req, res) => {
+    if (req.method === 'GET' && req.url.startsWith('/analyses')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, data: [], meta: { total: 0 } }));
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, message: 'Not found', statusCode: 404 }));
+  });
+
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      resolve({
+        baseUrl: `http://127.0.0.1:${address.port}`,
+        close: () => new Promise((closeResolve) => server.close(closeResolve)),
+      });
+    });
+  });
+}
+
 async function run() {
   console.log('Starting stdio smoke test...');
+  const mockMetricsApi = await startMockMetricsApi();
 
   // Start the built server and explicitly pass current env (so ANALYSIS_API_BASE_URL etc. are forwarded)
   const server = spawn('node', ['dist/server.js'], {
     stdio: ['pipe', 'pipe', 'inherit'],
-    env: { ...process.env },
+    env: {
+      ...process.env,
+      ANALYSIS_API_BASE_URL: process.env.ANALYSIS_API_BASE_URL || 'http://127.0.0.1:13000',
+      METRICS_API_BASE_URL: mockMetricsApi.baseUrl,
+    },
   });
 
   server.stdout.setEncoding('utf8');
@@ -25,9 +55,10 @@ async function run() {
     process.exit(3);
   }, timeoutMs);
 
-  function finish(code = 0) {
+  async function finish(code = 0) {
     clearTimeout(timeoutHandle);
     try { server.kill(); } catch (e) { }
+    await mockMetricsApi.close();
     process.exit(code);
   }
 
