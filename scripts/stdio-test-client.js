@@ -42,7 +42,8 @@ async function run() {
       try {
         msg = JSON.parse(line);
       } catch (e) {
-        // ignore non-json lines
+        // ignore non-json lines, but log parsing errors for debugging
+        console.debug('Failed to parse JSON line:', e.message);
         continue;
       }
 
