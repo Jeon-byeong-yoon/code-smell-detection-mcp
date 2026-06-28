@@ -1,5 +1,4 @@
 import axios, { AxiosInstance } from 'axios';
-import { AnalysisResult, Smell, CodeAnalysisResult } from '../types/code-analysis';
 
 export class MetricsApiClient {
   private readonly client: AxiosInstance;
