@@ -290,6 +290,28 @@ stdio smoke test success (detected valid response).
 
 - local mock metrics API가 `127.0.0.1`에 bind되므로 sandbox 환경에서는 권한 상승이 필요할 수 있다.
 
+### Advanced PyExamine Mock Smoke Test
+
+외부 `advanced_pyexamine` 레포 없이 MCP 응답 처리 로직을 검증하기 위해 mock CLI 기반 smoke test를 추가했다.
+
+```bash
+npm run test:advanced-pyexamine
+```
+
+검증 범위:
+
+- 기본 smell group JSON 파싱
+- 전체 `summary` 계산
+- `summaryOnly` 응답에서 `smellGroups` 생략
+- `limitPerGroup` 적용 시 상세 응답 제한
+- 제한 여부를 `response.truncated`로 표시
+
+결과:
+
+```text
+advanced_pyexamine smoke test success.
+```
+
 ### Diff Check
 
 ```bash
@@ -338,13 +360,7 @@ MCP server -> advanced_pyexamine Python smell engine
 
 ### 2. Small Fixture Smoke Test
 
-현재 end-to-end 검증은 `advanced_pyexamine` 프로젝트 자체를 분석했다.
-
-추후에는 작은 fixture project를 두고 다음을 검증하는 smoke test를 추가하는 것이 좋다.
-
-- tool 실행 성공 여부
-- JSON parse 성공 여부
-- summary shape 유지 여부
+mock CLI 기반 smoke test는 추가되었다. 실제 fixture project를 분석하는 테스트는 외부 `advanced_pyexamine` 실행 환경을 어떻게 제공할지 결정한 뒤 추가할 수 있다.
 
 ### 3. HTTP Service Split
 

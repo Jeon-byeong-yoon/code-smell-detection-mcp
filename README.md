@@ -26,7 +26,14 @@ npm run dev
 npm run build
 ```
 
-4. 실행 (빌드 후)
+4. 테스트
+
+```bash
+npm run test:stdio
+npm run test:advanced-pyexamine
+```
+
+5. 실행 (빌드 후)
 
 ```bash
 npm start
@@ -91,6 +98,8 @@ printf '%s\n' '{"id":"py-smell-1","tool":"analyze_python_smells","params":{"proj
 ```
 
 `summary`는 항상 전체 탐지 결과 기준이며, `limitPerGroup`은 반환되는 `smellGroups`만 제한합니다.
+
+`test:advanced-pyexamine`은 실제 `advanced_pyexamine` 레포 없이 mock CLI로 `summary`, `summaryOnly`, `limitPerGroup` 응답 처리를 검증합니다.
 
 ## 원본 코드 분리 가이드
 - 복사할 파일: `code-vi-internal/code-vi-back/src/mcp/codevi-metrics-server.ts`
