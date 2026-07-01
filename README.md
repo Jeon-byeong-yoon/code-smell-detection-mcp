@@ -40,6 +40,45 @@ npm start
 - `METRICS_API_KEY` (필요 시)
 - `METRICS_DEFAULT_TEAM_PROJECT_ID`
 - `METRICS_REQUEST_TIMEOUT_MS`
+- `ADVANCED_PYEXAMINE_BIN` (기본값: `python`)
+- `ADVANCED_PYEXAMINE_ARGS` (기본값: `-m,advanced_pyexamine`)
+- `ADVANCED_PYEXAMINE_CWD` (예: advanced_pyexamine 레포 루트)
+- `ADVANCED_PYEXAMINE_TIMEOUT_MS`
+
+## 제공 도구
+
+### Metrics Analysis
+
+- `list_metric_analyses`: CodeVi metric analysis 이력 목록 조회
+- `run_metric_analysis`: CodeVi metric analysis 실행 및 저장
+- `get_metric_analysis`: 저장된 metric analysis 단건 조회
+
+### PyExamine / Code Analysis
+
+- `get_latest_pyexamine_result`: 최신 PyExamine 결과 조회
+- `get_pyexamine_result_by_commit`: commit hash 기준 PyExamine 결과 조회
+- `get_high_severity_smells`: high severity smell 조회
+- `get_smells_by_file`: 파일 경로 기준 smell 조회
+
+### Advanced PyExamine
+
+- `analyze_python_smells`: `advanced_pyexamine` CLI를 subprocess로 실행해 Python 프로젝트 smell 결과를 JSON으로 반환
+
+예시:
+
+```bash
+printf '%s\n' '{"id":"py-smell-1","tool":"analyze_python_smells","params":{"projectPath":"/path/to/python/project"}}' \
+| ADVANCED_PYEXAMINE_BIN=python \
+  ADVANCED_PYEXAMINE_ARGS=-m,advanced_pyexamine \
+  ADVANCED_PYEXAMINE_CWD="/path/to/pyexamine 2" \
+  node dist/server.js
+```
+
+특정 detector만 실행하려면 `only`를 전달합니다.
+
+```json
+{ "id": "py-smell-2", "tool": "analyze_python_smells", "params": { "projectPath": "/path/to/python/project", "only": "orphan_module,data_clumps" } }
+```
 
 ## 원본 코드 분리 가이드
 - 복사할 파일: `code-vi-internal/code-vi-back/src/mcp/codevi-metrics-server.ts`
