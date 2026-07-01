@@ -89,6 +89,32 @@ analyze_python_smells
 }
 ```
 
+응답 크기 제어 옵션:
+
+```json
+{
+  "id": "py-smell-3",
+  "tool": "analyze_python_smells",
+  "params": {
+    "projectPath": "/path/to/python/project",
+    "summaryOnly": true
+  }
+}
+```
+
+```json
+{
+  "id": "py-smell-4",
+  "tool": "analyze_python_smells",
+  "params": {
+    "projectPath": "/path/to/python/project",
+    "limitPerGroup": 5
+  }
+}
+```
+
+`summary`는 전체 탐지 결과 기준이다. `summaryOnly`는 `smellGroups` 반환을 생략하고, `limitPerGroup`은 각 smell group에서 반환할 상세 항목 수만 제한한다.
+
 응답 구조:
 
 ```json
@@ -105,6 +131,12 @@ analyze_python_smells
         "total": 0,
         "bySeverity": {},
         "byName": {}
+      },
+      "response": {
+        "summaryOnly": false,
+        "limitPerGroup": 5,
+        "returnedTotal": 0,
+        "truncated": false
       }
     }
   }
@@ -300,18 +332,9 @@ MCP server -> advanced_pyexamine Python smell engine
 
 다음 작업은 선택 사항이다.
 
-### 1. Response Size Control
+### 1. Response Size Defaults
 
-현재는 `smellGroups` 전체를 반환하므로 큰 프로젝트에서는 응답이 매우 길 수 있다.
-
-추가 후보:
-
-```json
-{
-  "summaryOnly": true,
-  "limitPerGroup": 10
-}
-```
+`summaryOnly`와 `limitPerGroup` 옵션은 구현되었다. 추후 실제 MCP client UX에 맞춰 기본값을 둘지 결정할 수 있다.
 
 ### 2. Small Fixture Smoke Test
 
@@ -358,4 +381,3 @@ POST /analyze
 ```
 
 현재 CLI bridge 방식은 이 HTTP service 전환 전의 1차 검증 단계로 볼 수 있다.
-

@@ -12,8 +12,14 @@ export type AdvancedPyexamineResult = {
   language: 'python';
   projectPath: string;
   only?: string;
-  smellGroups: Record<string, unknown[]>;
+  smellGroups?: Record<string, unknown[]>;
   summary: AdvancedPyexamineSummary;
+  response: {
+    summaryOnly: boolean;
+    limitPerGroup?: number;
+    returnedTotal: number;
+    truncated: boolean;
+  };
 };
 
 type SpawnResult = {
@@ -41,6 +47,8 @@ export class AdvancedPyexamineClient {
   async analyzePythonSmells(payload: Record<string, unknown>): Promise<AdvancedPyexamineResult> {
     const projectPath = this.getRequiredString(payload.projectPath, 'projectPath');
     const only = this.getOptionalString(payload.only, 'only');
+    const summaryOnly = this.getOptionalBoolean(payload.summaryOnly, 'summaryOnly') ?? false;
+    const limitPerGroup = this.parseOptionalPositiveInteger(payload.limitPerGroup, 'limitPerGroup');
 
     const args = [
       ...this.baseArgs,
@@ -54,14 +62,23 @@ export class AdvancedPyexamineClient {
 
     const result = await this.run(args);
     const smellGroups = this.parseJsonOutput(result.stdout);
+    const summary = this.summarize(smellGroups);
+    const returnedGroups = summaryOnly ? undefined : this.limitGroups(smellGroups, limitPerGroup);
+    const returnedTotal = returnedGroups ? this.countSmells(returnedGroups) : 0;
 
     return {
       tool: 'advanced_pyexamine',
       language: 'python',
       projectPath,
       ...(only ? { only } : {}),
-      smellGroups,
-      summary: this.summarize(smellGroups),
+      ...(returnedGroups ? { smellGroups: returnedGroups } : {}),
+      summary,
+      response: {
+        summaryOnly,
+        ...(limitPerGroup ? { limitPerGroup } : {}),
+        returnedTotal,
+        truncated: returnedTotal < summary.total,
+      },
     };
   }
 
@@ -164,6 +181,18 @@ export class AdvancedPyexamineClient {
     return summary;
   }
 
+  private limitGroups(smellGroups: Record<string, unknown[]>, limitPerGroup: number | undefined): Record<string, unknown[]> {
+    if (!limitPerGroup) return smellGroups;
+
+    return Object.fromEntries(
+      Object.entries(smellGroups).map(([name, smells]) => [name, smells.slice(0, limitPerGroup)]),
+    );
+  }
+
+  private countSmells(smellGroups: Record<string, unknown[]>): number {
+    return Object.values(smellGroups).reduce((total, smells) => total + smells.length, 0);
+  }
+
   private getSmellSeverity(smell: unknown): string {
     if (!smell || typeof smell !== 'object') return 'unknown';
     const severity = (smell as { severity?: unknown }).severity;
@@ -192,5 +221,18 @@ export class AdvancedPyexamineClient {
     if (value === undefined || value === null || value === '') return undefined;
     if (typeof value !== 'string' || !value.trim()) throw new Error(`${fieldName} must be a non-empty string when provided.`);
     return value.trim();
+  }
+
+  private getOptionalBoolean(value: unknown, fieldName: string): boolean | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (typeof value !== 'boolean') throw new Error(`${fieldName} must be a boolean when provided.`);
+    return value;
+  }
+
+  private parseOptionalPositiveInteger(value: unknown, fieldName: string): number | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const parsedValue = Number(value);
+    if (!Number.isInteger(parsedValue) || parsedValue <= 0) throw new Error(`${fieldName} must be a positive integer.`);
+    return parsedValue;
   }
 }

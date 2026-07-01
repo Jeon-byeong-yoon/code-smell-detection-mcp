@@ -80,6 +80,18 @@ printf '%s\n' '{"id":"py-smell-1","tool":"analyze_python_smells","params":{"proj
 { "id": "py-smell-2", "tool": "analyze_python_smells", "params": { "projectPath": "/path/to/python/project", "only": "orphan_module,data_clumps" } }
 ```
 
+응답이 너무 큰 경우 `summaryOnly` 또는 `limitPerGroup`을 사용할 수 있습니다.
+
+```json
+{ "id": "py-smell-3", "tool": "analyze_python_smells", "params": { "projectPath": "/path/to/python/project", "summaryOnly": true } }
+```
+
+```json
+{ "id": "py-smell-4", "tool": "analyze_python_smells", "params": { "projectPath": "/path/to/python/project", "limitPerGroup": 5 } }
+```
+
+`summary`는 항상 전체 탐지 결과 기준이며, `limitPerGroup`은 반환되는 `smellGroups`만 제한합니다.
+
 ## 원본 코드 분리 가이드
 - 복사할 파일: `code-vi-internal/code-vi-back/src/mcp/codevi-metrics-server.ts`
 - 옮겨야 할 항목:
