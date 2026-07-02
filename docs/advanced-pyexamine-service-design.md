@@ -281,6 +281,17 @@ services/advanced-pyexamine/README.md
 
 `/health`와 mock `/analyze`부터 구현한다.
 
+현재 상태: 완료.
+
+추가된 skeleton:
+
+- `services/advanced-pyexamine/app/main.py`
+- `services/advanced-pyexamine/app/schemas.py`
+- `services/advanced-pyexamine/app/analyzer_adapter.py`
+- `services/advanced-pyexamine/app/response_transformer.py`
+- `services/advanced-pyexamine/tests/test_response_transformer.py`
+- `services/advanced-pyexamine/README.md`
+
 검증:
 
 ```bash
@@ -406,16 +417,31 @@ printf '%s\n' '{"id":"py-http-1","tool":"analyze_python_smells","params":{"proje
 - `ADVANCED_PYEXAMINE_SOURCE_DIR`로 원본 analyzer 경로를 주입
 - Docker는 service skeleton 검증 후 별도 작업으로 분리
 
+## Current Status
+
+Step 1 service skeleton은 이 repository 안에 추가되었다.
+
+현재 구현 범위:
+
+- `GET /health`
+- `POST /analyze`
+- deterministic mock analyzer response
+- MCP tool과 같은 response shape
+- `summaryOnly`
+- `limitPerGroup`
+- response transformer unit test
+
+아직 실제 `advanced_pyexamine` 탐지 로직을 import하지는 않는다.
+
 ## Recommended Next Step
 
-다음 구현 작업은 Step 1이다.
+다음 구현 작업은 Step 2이다.
 
 ```text
-services/advanced-pyexamine FastAPI skeleton 추가
-GET /health
-POST /analyze mock response
-service README 작성
+services/advanced-pyexamine/app/analyzer_adapter.py에서 mock 제거
+ADVANCED_PYEXAMINE_SOURCE_DIR 기반 sys.path 주입
+advanced_pyexamine.analyzer.analyze_project 호출
+Smell 객체를 dict response로 normalize
 ```
 
-이후 실제 `advanced_pyexamine` import와 MCP HTTP mode를 순차적으로 붙인다.
-
+이후 MCP HTTP mode를 붙인다.
