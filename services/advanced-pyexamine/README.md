@@ -25,6 +25,12 @@ export ADVANCED_PYEXAMINE_SOURCE_DIR="/path/to/pyexamine 2"
 python -m uvicorn app.main:app --host 127.0.0.1 --port 18080
 ```
 
+From the repository root, the same service can be started with:
+
+```bash
+ADVANCED_PYEXAMINE_SOURCE_DIR="/path/to/pyexamine 2" npm run service:advanced-pyexamine
+```
+
 ## Verify
 
 ```bash
@@ -42,6 +48,20 @@ curl -X POST http://localhost:18080/analyze \
 ```bash
 python -m unittest discover -s tests
 ```
+
+From the repository root, verify a running service end-to-end with:
+
+```bash
+ADVANCED_PYEXAMINE_SERVICE_URL=http://localhost:18080 \
+ADVANCED_PYEXAMINE_E2E_PROJECT_PATH="/path/to/python/project" \
+npm run test:advanced-pyexamine:service
+```
+
+This checks:
+
+- `GET /health`
+- `POST /analyze`
+- MCP `analyze_python_smells` with `ADVANCED_PYEXAMINE_MODE=http`
 
 ## Real Analyzer Integration Plan
 

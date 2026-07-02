@@ -55,6 +55,8 @@ npm start
 - `ADVANCED_PYEXAMINE_MODE` (`cli` 또는 `http`, 기본값: `cli`)
 - `ADVANCED_PYEXAMINE_SERVICE_URL` (HTTP mode, 예: http://localhost:18080)
 - `ADVANCED_PYEXAMINE_SERVICE_TIMEOUT_MS`
+- `ADVANCED_PYEXAMINE_SOURCE_DIR` (service 실행 시 advanced_pyexamine 원본 repo 경로)
+- `ADVANCED_PYEXAMINE_E2E_PROJECT_PATH` (실제 service E2E 테스트 대상 Python project path)
 
 ## 제공 도구
 
@@ -97,6 +99,20 @@ printf '%s\n' '{"id":"py-smell-5","tool":"analyze_python_smells","params":{"proj
   node dist/server.js
 ```
 
+HTTP service 실행:
+
+```bash
+ADVANCED_PYEXAMINE_SOURCE_DIR="/path/to/pyexamine 2" npm run service:advanced-pyexamine
+```
+
+실제 HTTP service E2E 검증:
+
+```bash
+ADVANCED_PYEXAMINE_SERVICE_URL=http://localhost:18080 \
+ADVANCED_PYEXAMINE_E2E_PROJECT_PATH="/path/to/python/project" \
+npm run test:advanced-pyexamine:service
+```
+
 특정 detector만 실행하려면 `only`를 전달합니다.
 
 ```json
@@ -117,6 +133,7 @@ printf '%s\n' '{"id":"py-smell-5","tool":"analyze_python_smells","params":{"proj
 
 `test:advanced-pyexamine`은 실제 `advanced_pyexamine` 레포 없이 mock CLI로 `summary`, `summaryOnly`, `limitPerGroup` 응답 처리를 검증합니다.
 `test:advanced-pyexamine:http`는 mock HTTP service로 MCP HTTP mode forwarding과 응답 처리를 검증합니다.
+`test:advanced-pyexamine:service`는 이미 실행 중인 실제 FastAPI service를 대상으로 `/health`, `/analyze`, MCP HTTP mode를 함께 검증합니다.
 
 ## 원본 코드 분리 가이드
 - 복사할 파일: `code-vi-internal/code-vi-back/src/mcp/codevi-metrics-server.ts`
