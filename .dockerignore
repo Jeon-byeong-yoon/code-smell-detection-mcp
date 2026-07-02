@@ -1,0 +1,20 @@
+node_modules
+dist
+.git
+.env
+.env.*
+*.log
+coverage
+.npm
+.DS_Store
+
+# Python cache / virtualenvs
+__pycache__
+*.py[cod]
+.pytest_cache
+.venv
+venv
+
+# Service-local generated files
+services/advanced-pyexamine/app/__pycache__
+services/advanced-pyexamine/tests/__pycache__

@@ -119,6 +119,16 @@ docker run --rm \
 
 자세한 Docker workflow는 `docs/advanced-pyexamine-service-docker.md`를 참고합니다.
 
+MCP server와 HTTP service를 Docker Compose로 함께 실행:
+
+```bash
+printf '%s\n' '{"id":"compose-e2e-1","tool":"analyze_python_smells","params":{"projectPath":"/opt/advanced-pyexamine-source/advanced_pyexamine","only":"long_method,data_clumps","summaryOnly":true}}' \
+| ADVANCED_PYEXAMINE_HOST_SOURCE_DIR="/path/to/pyexamine 2" \
+  docker compose -f docker-compose.example.yml run --rm -T mcp-server
+```
+
+통합 Compose workflow는 `docs/mcp-advanced-pyexamine-compose.md`를 참고합니다.
+
 실제 HTTP service E2E 검증:
 
 ```bash
