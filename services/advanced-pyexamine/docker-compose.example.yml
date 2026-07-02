@@ -1,0 +1,11 @@
+services:
+  advanced-pyexamine-service:
+    build:
+      context: .
+    image: advanced-pyexamine-service:local
+    ports:
+      - "${ADVANCED_PYEXAMINE_SERVICE_PORT:-18080}:18080"
+    environment:
+      ADVANCED_PYEXAMINE_SOURCE_DIR: /opt/advanced-pyexamine-source
+    volumes:
+      - "${ADVANCED_PYEXAMINE_HOST_SOURCE_DIR:?Set ADVANCED_PYEXAMINE_HOST_SOURCE_DIR to the advanced_pyexamine repository root}:/opt/advanced-pyexamine-source:ro"

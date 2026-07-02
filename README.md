@@ -105,6 +105,20 @@ HTTP service 실행:
 ADVANCED_PYEXAMINE_SOURCE_DIR="/path/to/pyexamine 2" npm run service:advanced-pyexamine
 ```
 
+HTTP service Docker 실행:
+
+```bash
+docker build -t advanced-pyexamine-service:local services/advanced-pyexamine
+
+docker run --rm \
+  -p 18080:18080 \
+  -e ADVANCED_PYEXAMINE_SOURCE_DIR=/opt/advanced-pyexamine-source \
+  -v "/path/to/pyexamine 2:/opt/advanced-pyexamine-source:ro" \
+  advanced-pyexamine-service:local
+```
+
+자세한 Docker workflow는 `docs/advanced-pyexamine-service-docker.md`를 참고합니다.
+
 실제 HTTP service E2E 검증:
 
 ```bash

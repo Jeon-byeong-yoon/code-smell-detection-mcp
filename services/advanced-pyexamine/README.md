@@ -31,6 +31,35 @@ From the repository root, the same service can be started with:
 ADVANCED_PYEXAMINE_SOURCE_DIR="/path/to/pyexamine 2" npm run service:advanced-pyexamine
 ```
 
+## Run With Docker
+
+Build the wrapper image:
+
+```bash
+docker build -t advanced-pyexamine-service:local services/advanced-pyexamine
+```
+
+Run it with the original `advanced_pyexamine` repository mounted read-only:
+
+```bash
+docker run --rm \
+  -p 18080:18080 \
+  -e ADVANCED_PYEXAMINE_SOURCE_DIR=/opt/advanced-pyexamine-source \
+  -v "/path/to/pyexamine 2:/opt/advanced-pyexamine-source:ro" \
+  advanced-pyexamine-service:local
+```
+
+Or use the compose example:
+
+```bash
+cd services/advanced-pyexamine
+ADVANCED_PYEXAMINE_HOST_SOURCE_DIR="/path/to/pyexamine 2" \
+docker compose -f docker-compose.example.yml up --build
+```
+
+The Docker image intentionally contains only the FastAPI wrapper. Detector code
+is provided by the mounted `advanced_pyexamine` source repository.
+
 ## Verify
 
 ```bash
