@@ -7,8 +7,10 @@ This service is intentionally kept in `code-smell-detection-mcp` as a wrapper la
 Current status:
 
 - `GET /health` is implemented.
-- `POST /analyze` returns a mock analyzer response with the same response shape expected by the MCP tool.
-- `response_transformer.py` is covered by local unit tests.
+- `POST /analyze` calls `advanced_pyexamine.analyzer.analyze_project`.
+- `ADVANCED_PYEXAMINE_SOURCE_DIR` can point to a local `advanced_pyexamine` source repository.
+- `Smell` objects are normalized to the same response shape expected by the MCP tool.
+- The analyzer adapter and response transformer are covered by local unit tests.
 
 ## Install
 
@@ -19,6 +21,7 @@ python -m pip install -r requirements.txt
 ## Run
 
 ```bash
+export ADVANCED_PYEXAMINE_SOURCE_DIR="/path/to/pyexamine 2"
 python -m uvicorn app.main:app --host 127.0.0.1 --port 18080
 ```
 
@@ -31,7 +34,7 @@ curl http://localhost:18080/health
 ```bash
 curl -X POST http://localhost:18080/analyze \
   -H "Content-Type: application/json" \
-  -d '{"projectPath":"/tmp/sample-python-project","summaryOnly":true}'
+  -d '{"projectPath":"/path/to/python/project","summaryOnly":true}'
 ```
 
 ## Test
@@ -42,16 +45,17 @@ python -m unittest discover -s tests
 
 ## Real Analyzer Integration Plan
 
-The next step is to replace the mock implementation in `app/analyzer_adapter.py` with a real call to:
+`app/analyzer_adapter.py` already calls:
 
 ```python
 from advanced_pyexamine.analyzer import analyze_project
 ```
 
-The service should support:
+When `advanced_pyexamine` is not installed in the current Python environment,
+set:
 
 ```bash
 export ADVANCED_PYEXAMINE_SOURCE_DIR="/path/to/pyexamine 2"
 ```
 
-and add that path to `sys.path` before importing `advanced_pyexamine`.
+The service adds that path to `sys.path` before importing `advanced_pyexamine`.

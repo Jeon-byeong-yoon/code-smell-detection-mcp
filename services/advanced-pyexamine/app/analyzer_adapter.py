@@ -1,69 +1,105 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import os
+import sys
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 
 SmellGroups = Dict[str, List[Dict[str, Any]]]
+AnalyzeProject = Callable[..., Dict[str, Iterable[Any]]]
 
 
 def analyze_project(project_path: str, only: Optional[str] = None) -> SmellGroups:
-    """Return smell groups.
+    """Run advanced_pyexamine and return JSON-serializable smell groups."""
+    if not os.path.isdir(project_path):
+        raise FileNotFoundError(f"Project path does not exist or is not a directory: {project_path}")
 
-    This is a skeleton adapter. It currently returns deterministic mock data so
-    the HTTP service contract can be developed and tested before wiring the real
-    advanced_pyexamine package.
-    """
-    groups: SmellGroups = {
-        "long_method": [
-            {
-                "name": "long_method",
-                "category": "size_metric",
-                "entity": "UserService.get_user",
-                "location": {
-                    "file": f"{project_path}/sample.py",
-                    "line_start": 1,
-                    "line_end": 45,
-                },
-                "severity": "high",
-                "metrics": {"lines": 45, "threshold": 30},
-                "related_locations": [],
-                "message": None,
-            },
-            {
-                "name": "long_method",
-                "category": "size_metric",
-                "entity": "OrderService.create_order",
-                "location": {
-                    "file": f"{project_path}/orders.py",
-                    "line_start": 10,
-                    "line_end": 42,
-                },
-                "severity": "medium",
-                "metrics": {"lines": 33, "threshold": 30},
-                "related_locations": [],
-                "message": None,
-            },
-        ],
-        "data_clumps": [
-            {
-                "name": "data_clumps",
-                "category": "abstraction_misuse_metric",
-                "entity": "name, email, phone",
-                "location": {
-                    "file": f"{project_path}/users.py",
-                    "line_start": 12,
-                    "line_end": 18,
-                },
-                "severity": "medium",
-                "metrics": {"occurrences": 3},
-                "related_locations": [],
-                "message": "Introduce Parameter Object",
-            }
-        ],
+    analyzer = _load_analyzer()
+    results = analyzer(project_path, only=_parse_only(only))
+
+    return {
+        name: [_smell_to_dict(smell) for smell in smells]
+        for name, smells in results.items()
     }
 
-    if not only:
-        return groups
 
-    names = [name.strip() for name in only.split(",") if name.strip()]
-    return {name: groups.get(name, []) for name in names}
+def _load_analyzer() -> AnalyzeProject:
+    _configure_source_dir()
+
+    try:
+        from advanced_pyexamine.analyzer import analyze_project as advanced_analyze_project
+    except ModuleNotFoundError as error:
+        if error.name == "advanced_pyexamine":
+            raise RuntimeError(
+                "advanced_pyexamine is not importable. "
+                "Set ADVANCED_PYEXAMINE_SOURCE_DIR to the repository root "
+                "or install advanced_pyexamine in this Python environment."
+            ) from error
+        raise
+
+    return advanced_analyze_project
+
+
+def _configure_source_dir() -> None:
+    source_dir = os.environ.get("ADVANCED_PYEXAMINE_SOURCE_DIR")
+    if not source_dir:
+        return
+
+    absolute_source_dir = os.path.abspath(source_dir)
+    if not os.path.isdir(absolute_source_dir):
+        raise FileNotFoundError(
+            f"ADVANCED_PYEXAMINE_SOURCE_DIR does not exist or is not a directory: {source_dir}"
+        )
+
+    if absolute_source_dir not in sys.path:
+        sys.path.insert(0, absolute_source_dir)
+
+
+def _parse_only(only: Optional[str]) -> Optional[List[str]]:
+    if not only:
+        return None
+
+    detector_names = [name.strip() for name in only.split(",") if name.strip()]
+    return detector_names or None
+
+
+def _smell_to_dict(smell: Any) -> Dict[str, Any]:
+    return {
+        "name": _get_value(smell, "name"),
+        "category": _get_value(smell, "category"),
+        "entity": _get_value(smell, "entity"),
+        "location": _location_to_dict(_get_value(smell, "location")),
+        "severity": _severity_to_string(_get_value(smell, "severity")),
+        "metrics": dict(_get_value(smell, "metrics") or {}),
+        "related_locations": [
+            _location_to_dict(location)
+            for location in (_get_value(smell, "related_locations") or [])
+        ],
+        "message": _get_value(smell, "message"),
+    }
+
+
+def _location_to_dict(location: Any) -> Dict[str, Any]:
+    if isinstance(location, dict):
+        return {
+            "file": location.get("file"),
+            "line_start": location.get("line_start"),
+            "line_end": location.get("line_end"),
+        }
+
+    return {
+        "file": _get_value(location, "file"),
+        "line_start": _get_value(location, "line_start"),
+        "line_end": _get_value(location, "line_end"),
+    }
+
+
+def _severity_to_string(severity: Any) -> str:
+    value = getattr(severity, "value", severity)
+    return str(value)
+
+
+def _get_value(source: Any, key: str) -> Any:
+    if isinstance(source, dict):
+        return source.get(key)
+    return getattr(source, key, None)

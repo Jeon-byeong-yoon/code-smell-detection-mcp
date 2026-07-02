@@ -31,6 +31,7 @@ npm run build
 ```bash
 npm run test:stdio
 npm run test:advanced-pyexamine
+npm run test:advanced-pyexamine:http
 ```
 
 5. 실행 (빌드 후)
@@ -51,6 +52,9 @@ npm start
 - `ADVANCED_PYEXAMINE_ARGS` (기본값: `-m,advanced_pyexamine`)
 - `ADVANCED_PYEXAMINE_CWD` (예: advanced_pyexamine 레포 루트)
 - `ADVANCED_PYEXAMINE_TIMEOUT_MS`
+- `ADVANCED_PYEXAMINE_MODE` (`cli` 또는 `http`, 기본값: `cli`)
+- `ADVANCED_PYEXAMINE_SERVICE_URL` (HTTP mode, 예: http://localhost:18080)
+- `ADVANCED_PYEXAMINE_SERVICE_TIMEOUT_MS`
 
 ## 제공 도구
 
@@ -69,15 +73,27 @@ npm start
 
 ### Advanced PyExamine
 
-- `analyze_python_smells`: `advanced_pyexamine` CLI를 subprocess로 실행해 Python 프로젝트 smell 결과를 JSON으로 반환
+- `analyze_python_smells`: Python 프로젝트 smell 결과를 JSON으로 반환
+  - `ADVANCED_PYEXAMINE_MODE=cli`: `advanced_pyexamine` CLI를 subprocess로 실행
+  - `ADVANCED_PYEXAMINE_MODE=http`: `services/advanced-pyexamine` HTTP service의 `/analyze` 호출
 
-예시:
+CLI mode 예시:
 
 ```bash
 printf '%s\n' '{"id":"py-smell-1","tool":"analyze_python_smells","params":{"projectPath":"/path/to/python/project"}}' \
-| ADVANCED_PYEXAMINE_BIN=python \
+| ADVANCED_PYEXAMINE_MODE=cli \
+  ADVANCED_PYEXAMINE_BIN=python \
   ADVANCED_PYEXAMINE_ARGS=-m,advanced_pyexamine \
   ADVANCED_PYEXAMINE_CWD="/path/to/pyexamine 2" \
+  node dist/server.js
+```
+
+HTTP mode 예시:
+
+```bash
+printf '%s\n' '{"id":"py-smell-5","tool":"analyze_python_smells","params":{"projectPath":"/path/to/python/project","summaryOnly":true}}' \
+| ADVANCED_PYEXAMINE_MODE=http \
+  ADVANCED_PYEXAMINE_SERVICE_URL=http://localhost:18080 \
   node dist/server.js
 ```
 
@@ -100,6 +116,7 @@ printf '%s\n' '{"id":"py-smell-1","tool":"analyze_python_smells","params":{"proj
 `summary`는 항상 전체 탐지 결과 기준이며, `limitPerGroup`은 반환되는 `smellGroups`만 제한합니다.
 
 `test:advanced-pyexamine`은 실제 `advanced_pyexamine` 레포 없이 mock CLI로 `summary`, `summaryOnly`, `limitPerGroup` 응답 처리를 검증합니다.
+`test:advanced-pyexamine:http`는 mock HTTP service로 MCP HTTP mode forwarding과 응답 처리를 검증합니다.
 
 ## 원본 코드 분리 가이드
 - 복사할 파일: `code-vi-internal/code-vi-back/src/mcp/codevi-metrics-server.ts`

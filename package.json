@@ -7,6 +7,7 @@
   "scripts": {
     "test:stdio": "node scripts/stdio-test-client.js",
     "test:advanced-pyexamine": "node scripts/advanced-pyexamine-smoke-test.js",
+    "test:advanced-pyexamine:http": "node scripts/advanced-pyexamine-http-smoke-test.js",
     "build": "tsc -p tsconfig.json",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "start": "node dist/server.js",

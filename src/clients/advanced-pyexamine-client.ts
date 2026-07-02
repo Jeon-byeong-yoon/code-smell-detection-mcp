@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import axios, { AxiosInstance } from 'axios';
 import path from 'path';
 
 export type AdvancedPyexamineSummary = {
@@ -29,19 +30,40 @@ type SpawnResult = {
   signal: NodeJS.Signals | null;
 };
 
+type AdvancedPyexamineMode = 'cli' | 'http';
+
 export class AdvancedPyexamineClient {
+  private readonly mode: AdvancedPyexamineMode;
   private readonly bin: string;
   private readonly baseArgs: string[];
   private readonly cwd?: string;
   private readonly timeoutMs: number;
+  private readonly serviceClient?: AxiosInstance;
 
   constructor() {
+    this.mode = this.parseMode(process.env.ADVANCED_PYEXAMINE_MODE);
     this.bin = process.env.ADVANCED_PYEXAMINE_BIN?.trim() || 'python';
     this.baseArgs = this.parseArgs(process.env.ADVANCED_PYEXAMINE_ARGS ?? '-m,advanced_pyexamine');
     this.cwd = this.normalizeOptionalPath(process.env.ADVANCED_PYEXAMINE_CWD);
 
     const timeout = Number(process.env.ADVANCED_PYEXAMINE_TIMEOUT_MS ?? '30000');
     this.timeoutMs = Number.isFinite(timeout) && timeout > 0 ? timeout : 30000;
+
+    if (this.mode === 'http') {
+      const serviceUrl = process.env.ADVANCED_PYEXAMINE_SERVICE_URL?.trim();
+      if (!serviceUrl) throw new Error('ADVANCED_PYEXAMINE_SERVICE_URL is required when ADVANCED_PYEXAMINE_MODE=http.');
+
+      const serviceTimeout = Number(process.env.ADVANCED_PYEXAMINE_SERVICE_TIMEOUT_MS ?? this.timeoutMs);
+      this.serviceClient = axios.create({
+        baseURL: serviceUrl,
+        timeout: Number.isFinite(serviceTimeout) && serviceTimeout > 0 ? serviceTimeout : this.timeoutMs,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        validateStatus: () => true,
+      });
+    }
   }
 
   async analyzePythonSmells(payload: Record<string, unknown>): Promise<AdvancedPyexamineResult> {
@@ -49,6 +71,15 @@ export class AdvancedPyexamineClient {
     const only = this.getOptionalString(payload.only, 'only');
     const summaryOnly = this.getOptionalBoolean(payload.summaryOnly, 'summaryOnly') ?? false;
     const limitPerGroup = this.parseOptionalPositiveInteger(payload.limitPerGroup, 'limitPerGroup');
+
+    if (this.mode === 'http') {
+      return this.analyzePythonSmellsWithHttp({
+        projectPath,
+        ...(only ? { only } : {}),
+        summaryOnly,
+        ...(limitPerGroup ? { limitPerGroup } : {}),
+      });
+    }
 
     const args = [
       ...this.baseArgs,
@@ -80,6 +111,17 @@ export class AdvancedPyexamineClient {
         truncated: returnedTotal < summary.total,
       },
     };
+  }
+
+  private async analyzePythonSmellsWithHttp(payload: Record<string, unknown>): Promise<AdvancedPyexamineResult> {
+    if (!this.serviceClient) throw new Error('advanced_pyexamine HTTP service client is not configured.');
+
+    const response = await this.serviceClient.post('/analyze', payload);
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`advanced_pyexamine service failed: ${this.readHttpError(response.data, response.status)}`);
+    }
+
+    return this.parseServiceResult(response.data);
   }
 
   private run(args: string[]): Promise<SpawnResult> {
@@ -161,6 +203,43 @@ export class AdvancedPyexamineClient {
     return groups as Record<string, unknown[]>;
   }
 
+  private parseServiceResult(data: unknown): AdvancedPyexamineResult {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new Error('advanced_pyexamine service response must be an object.');
+    }
+
+    const result = data as Partial<AdvancedPyexamineResult>;
+
+    if (result.tool !== 'advanced_pyexamine') throw new Error('advanced_pyexamine service response has invalid tool.');
+    if (result.language !== 'python') throw new Error('advanced_pyexamine service response has invalid language.');
+    if (typeof result.projectPath !== 'string' || !result.projectPath.trim()) {
+      throw new Error('advanced_pyexamine service response is missing projectPath.');
+    }
+    if (!result.summary || typeof result.summary.total !== 'number') {
+      throw new Error('advanced_pyexamine service response is missing summary.');
+    }
+    if (!result.response || typeof result.response.summaryOnly !== 'boolean') {
+      throw new Error('advanced_pyexamine service response is missing response metadata.');
+    }
+
+    return result as AdvancedPyexamineResult;
+  }
+
+  private readHttpError(data: unknown, status: number): string {
+    if (data && typeof data === 'object') {
+      const body = data as {
+        detail?: unknown;
+        message?: unknown;
+        error?: { message?: unknown };
+      };
+
+      const message = body.error?.message ?? body.detail ?? body.message;
+      if (typeof message === 'string' && message.trim()) return message.trim();
+    }
+
+    return `HTTP ${status}`;
+  }
+
   private summarize(smellGroups: Record<string, unknown[]>): AdvancedPyexamineSummary {
     const summary: AdvancedPyexamineSummary = {
       total: 0,
@@ -205,6 +284,12 @@ export class AdvancedPyexamineClient {
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean);
+  }
+
+  private parseMode(value: string | undefined): AdvancedPyexamineMode {
+    const mode = value?.trim().toLowerCase() || 'cli';
+    if (mode === 'cli' || mode === 'http') return mode;
+    throw new Error('ADVANCED_PYEXAMINE_MODE must be either "cli" or "http".');
   }
 
   private normalizeOptionalPath(value: string | undefined): string | undefined {

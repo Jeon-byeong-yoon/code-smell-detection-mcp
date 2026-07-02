@@ -317,6 +317,16 @@ adapter 책임:
 - `analyze_project` 호출
 - `Smell` 객체를 dict로 변환
 
+현재 상태: 완료.
+
+구현 내용:
+
+- `ADVANCED_PYEXAMINE_SOURCE_DIR` 기반 source path 주입
+- `advanced_pyexamine.analyzer.analyze_project` lazy import
+- `projectPath` directory 검증
+- comma-separated `only`를 detector name list로 변환
+- `Smell`, `Location`, `Severity` 객체를 JSON-serializable dict로 변환
+
 ### Step 3. Match Current MCP Response Shape
 
 현재 CLI client가 반환하는 shape와 HTTP service 응답 shape를 맞춘다.
@@ -331,6 +341,10 @@ adapter 책임:
 - `summary`
 - `response`
 
+현재 상태: 완료.
+
+service response는 MCP `analyze_python_smells`와 같은 핵심 필드를 유지한다.
+
 ### Step 4. Add MCP HTTP Mode
 
 `src/clients/advanced-pyexamine-client.ts`를 확장한다.
@@ -341,6 +355,17 @@ adapter 책임:
 mode === "cli"  -> current spawn flow
 mode === "http" -> axios.post(`${serviceUrl}/analyze`, payload)
 ```
+
+현재 상태: 완료.
+
+구현 내용:
+
+- `ADVANCED_PYEXAMINE_MODE=cli` 기본값 유지
+- `ADVANCED_PYEXAMINE_MODE=http` 지원
+- `ADVANCED_PYEXAMINE_SERVICE_URL` 필수 검증
+- `ADVANCED_PYEXAMINE_SERVICE_TIMEOUT_MS` 지원
+- HTTP `/analyze` 응답 shape 검증
+- service 에러 메시지 stdio error로 변환
 
 검증:
 
@@ -359,15 +384,19 @@ printf '%s\n' '{"id":"py-http-1","tool":"analyze_python_smells","params":{"proje
    - 기존 mock CLI smoke test
    - 계속 유지
 
-2. Python service unit test
+2. `npm run test:advanced-pyexamine:http`
+   - mock HTTP service smoke test
+   - MCP `analyze_python_smells`가 `/analyze`로 payload를 전달하는지 검증
+
+3. Python service unit test
    - `response_transformer` summary 계산
    - `summaryOnly`
    - `limitPerGroup`
 
-3. HTTP smoke test
+4. HTTP smoke test
    - service를 띄운 뒤 `/health`, `/analyze` 확인
 
-4. MCP HTTP mode smoke test
+5. MCP HTTP mode smoke test
    - mock HTTP service 또는 실제 service 대상
 
 ## Verification Commands
@@ -377,6 +406,7 @@ printf '%s\n' '{"id":"py-http-1","tool":"analyze_python_smells","params":{"proje
 ```bash
 npm run build
 npm run test:advanced-pyexamine
+npm run test:advanced-pyexamine:http
 npm run test:stdio
 git diff --check
 ```
@@ -419,29 +449,31 @@ printf '%s\n' '{"id":"py-http-1","tool":"analyze_python_smells","params":{"proje
 
 ## Current Status
 
-Step 1 service skeleton은 이 repository 안에 추가되었다.
+Step 1 service skeleton과 Step 2 real analyzer adapter는 이 repository 안에 추가되었다.
 
 현재 구현 범위:
 
 - `GET /health`
 - `POST /analyze`
-- deterministic mock analyzer response
+- real `advanced_pyexamine` analyzer adapter
+- `ADVANCED_PYEXAMINE_SOURCE_DIR` source path injection
 - MCP tool과 같은 response shape
 - `summaryOnly`
 - `limitPerGroup`
+- analyzer adapter unit test
 - response transformer unit test
+- MCP HTTP mode smoke test
 
-아직 실제 `advanced_pyexamine` 탐지 로직을 import하지는 않는다.
+FastAPI runtime 의존성은 `services/advanced-pyexamine/requirements.txt`로 분리되어 있다.
+현재 로컬 검증은 Python unit test와 adapter 직접 호출 기준으로 수행한다.
 
 ## Recommended Next Step
 
-다음 구현 작업은 Step 2이다.
+다음 구현 작업은 실제 HTTP service runtime smoke test와 Docker 실행 편의성 추가이다.
 
 ```text
-services/advanced-pyexamine/app/analyzer_adapter.py에서 mock 제거
-ADVANCED_PYEXAMINE_SOURCE_DIR 기반 sys.path 주입
-advanced_pyexamine.analyzer.analyze_project 호출
-Smell 객체를 dict response로 normalize
+FastAPI dependency install 후 HTTP runtime smoke test
+services/advanced-pyexamine /health, /analyze 실제 호출 검증
+필요 시 service Dockerfile 또는 실행 스크립트 추가
+검증 결과 문서화
 ```
-
-이후 MCP HTTP mode를 붙인다.
