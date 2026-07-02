@@ -1,0 +1,51 @@
+name: Advanced PyExamine Compose E2E
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/advanced-pyexamine-compose-e2e.yml'
+      - 'Dockerfile'
+      - 'docker-compose.example.yml'
+      - 'package*.json'
+      - 'scripts/advanced-pyexamine-compose-e2e-test.js'
+      - 'services/advanced-pyexamine/**'
+      - 'src/**'
+      - 'test-fixtures/advanced-pyexamine-source/**'
+      - 'tsconfig.json'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/advanced-pyexamine-compose-e2e.yml'
+      - 'Dockerfile'
+      - 'docker-compose.example.yml'
+      - 'package*.json'
+      - 'scripts/advanced-pyexamine-compose-e2e-test.js'
+      - 'services/advanced-pyexamine/**'
+      - 'src/**'
+      - 'test-fixtures/advanced-pyexamine-source/**'
+      - 'tsconfig.json'
+
+jobs:
+  compose-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Run Compose E2E
+        run: npm run test:advanced-pyexamine:compose
