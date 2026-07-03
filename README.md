@@ -159,6 +159,8 @@ npm run test:advanced-pyexamine:service
 `test:advanced-pyexamine:http`는 mock HTTP service로 MCP HTTP mode forwarding과 응답 처리를 검증합니다.
 `test:advanced-pyexamine:service`는 이미 실행 중인 실제 FastAPI service를 대상으로 `/health`, `/analyze`, MCP HTTP mode를 함께 검증합니다.
 
+CodeVi backend 연동 contract는 `docs/codevi-smell-analysis-contract.md`를 참고합니다.
+
 ## 원본 코드 분리 가이드
 - 복사할 파일: `code-vi-internal/code-vi-back/src/mcp/codevi-metrics-server.ts`
 - 옮겨야 할 항목:
@@ -191,3 +193,4 @@ npm run test:advanced-pyexamine:service
 - 오류/타입 재검토, 테스트 케이스 추가
 - 필요 시 MCP 공식 SDK(stdio 외)로 transport 전환
 - npm 패키지화 및 배포
+- CodeVi backend smell analysis contract에 맞춘 저장/API 구현은 별도 backend repo에서 진행
