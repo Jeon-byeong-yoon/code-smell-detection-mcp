@@ -64,6 +64,11 @@ SMELL_ANALYSIS_REQUEST_TIMEOUT_MS=15000
 | `getSmellAnalysis(jobId)` | GET /smell-analyses/:id |
 | `listSmellAnalysisFindings(jobId, query)` | GET /smell-analyses/:id/findings |
 
+`listSmellAnalyses`는 `teamProjectId`, `language`, `status`, `analyzer`,
+`buildNumber`, `commitHash`, `limit`, `offset` 필터를 전달한다.
+`listSmellAnalysisFindings` 응답은 `{ items, total, limit, offset }` 형태로
+정규화된 finding 페이지를 반환한다.
+
 ### 3. `src/tools/smell-analysis-tools.ts` (신규)
 
 MCP tool 4개 등록.

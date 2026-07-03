@@ -103,10 +103,10 @@ export function registerSmellAnalysisTools(transport: Transport) {
       ...(p.language !== undefined ? { language: p.language as string } : {}),
       ...(p.status !== undefined ? { status: p.status as ListSmellAnalysisQuery['status'] } : {}),
       ...(p.analyzer !== undefined ? { analyzer: p.analyzer as string } : {}),
-      ...(p.buildNumber !== undefined ? { buildNumber: Number(p.buildNumber) } : {}),
+      ...(p.buildNumber !== undefined ? { buildNumber: assertPositiveInteger(p.buildNumber, 'buildNumber') } : {}),
       ...(p.commitHash !== undefined ? { commitHash: String(p.commitHash) } : {}),
-      ...(p.limit !== undefined ? { limit: Number(p.limit) } : {}),
-      ...(p.offset !== undefined ? { offset: Number(p.offset) } : {}),
+      ...(p.limit !== undefined ? { limit: assertPositiveInteger(p.limit, 'limit') } : {}),
+      ...(p.offset !== undefined ? { offset: assertNonNegativeInteger(p.offset, 'offset') } : {}),
     };
 
     const result = await getClient().listSmellAnalyses(query);
@@ -160,8 +160,8 @@ export function registerSmellAnalysisTools(transport: Transport) {
       ...(p.name !== undefined ? { name: String(p.name) } : {}),
       ...(p.category !== undefined ? { category: String(p.category) } : {}),
       ...(p.filePath !== undefined ? { filePath: String(p.filePath) } : {}),
-      ...(p.limit !== undefined ? { limit: Number(p.limit) } : {}),
-      ...(p.offset !== undefined ? { offset: Number(p.offset) } : {}),
+      ...(p.limit !== undefined ? { limit: assertPositiveInteger(p.limit, 'limit') } : {}),
+      ...(p.offset !== undefined ? { offset: assertNonNegativeInteger(p.offset, 'offset') } : {}),
     };
 
     const result = await getClient().listSmellAnalysisFindings(jobId, query);
@@ -176,6 +176,12 @@ export function registerSmellAnalysisTools(transport: Transport) {
 function assertPositiveInteger(value: unknown, fieldName: string): number {
   const n = Number(value);
   if (!Number.isInteger(n) || n <= 0) throw new Error(`${fieldName} must be a positive integer.`);
+  return n;
+}
+
+function assertNonNegativeInteger(value: unknown, fieldName: string): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) throw new Error(`${fieldName} must be a non-negative integer.`);
   return n;
 }
 

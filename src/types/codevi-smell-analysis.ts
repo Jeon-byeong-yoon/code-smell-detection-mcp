@@ -192,7 +192,8 @@ export interface AdvancedPyexamineAnalyzeResponse {
   language: 'python';
   projectPath: string;
   only?: string;
-  smellGroups: Record<string, AdvancedPyexamineFindingItem[]>;
+  /** summaryOnly=true이면 service 응답에서 생략될 수 있다. */
+  smellGroups?: Record<string, AdvancedPyexamineFindingItem[]>;
   summary: SmellSummary;
   response: SmellAnalysisResponseMeta;
 }
@@ -202,7 +203,7 @@ export interface AdvancedPyexamineFindingItem {
   name: string;
   category?: string;
   entity?: string;
-  location: {
+  location?: {
     file: string;
     line_start: number;
     line_end: number;
@@ -367,8 +368,8 @@ export interface SmellAnalysisFindingsResponseDto {
   success: boolean;
   statusCode: 200;
   message: string;
-  data: Array<Omit<SmellAnalysisFinding, 'smellAnalysisJobId' | 'teamProjectId' | 'language' | 'rawFinding'>>;
-  meta: {
+  data: {
+    items: Array<Omit<SmellAnalysisFinding, 'smellAnalysisJobId' | 'teamProjectId' | 'language' | 'rawFinding'>>;
     total: number;
     limit: number;
     offset: number;

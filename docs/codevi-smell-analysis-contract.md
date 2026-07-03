@@ -267,9 +267,20 @@ Content-Type: application/json
 ### 목록 조회
 
 ```http
-GET /api/smell-analyses?teamProjectId=1&language=python&status=SUCCESS
+GET /api/smell-analyses?teamProjectId=1&language=python&status=SUCCESS&buildNumber=102&limit=20&offset=0
 Authorization: Bearer <jwt or api key>
 ```
+
+지원 필터:
+
+- `teamProjectId`
+- `language`
+- `status`
+- `analyzer`
+- `buildNumber`
+- `commitHash`
+- `limit`
+- `offset`
 
 응답:
 
@@ -375,6 +386,38 @@ Authorization: Bearer <jwt or api key>
 - `filePath`
 - `limit`
 - `offset`
+
+응답:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Smell findings retrieved successfully",
+  "data": {
+    "items": [
+      {
+        "id": 100,
+        "name": "long_method",
+        "category": "size_metric",
+        "severity": "high",
+        "filePath": "src/user_service.py",
+        "lineStart": 10,
+        "lineEnd": 70,
+        "entity": "UserService.getUser",
+        "message": "Extract Method",
+        "metrics": {
+          "loc": 61,
+          "threshold": 50
+        }
+      }
+    ],
+    "total": 41,
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
 
 ## MCP Tool 확장 Contract
 

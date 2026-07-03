@@ -79,10 +79,10 @@ export class SmellAnalysisClient {
     if (query.language) params.language = query.language;
     if (query.status) params.status = query.status;
     if (query.analyzer) params.analyzer = query.analyzer;
-    if (query.buildNumber) params.buildNumber = query.buildNumber;
+    if (query.buildNumber !== undefined) params.buildNumber = query.buildNumber;
     if (query.commitHash) params.commitHash = query.commitHash;
-    if (query.limit) params.limit = query.limit;
-    if (query.offset) params.offset = query.offset;
+    if (query.limit !== undefined) params.limit = query.limit;
+    if (query.offset !== undefined) params.offset = query.offset;
 
     const response = await this.client.get('/smell-analyses', { params });
     const data = this.unwrapResponse<SmellAnalysisListItem[]>(response.data);
@@ -128,8 +128,8 @@ export class SmellAnalysisClient {
     if (query.name) params.name = query.name;
     if (query.category) params.category = query.category;
     if (query.filePath) params.filePath = query.filePath;
-    if (query.limit) params.limit = query.limit;
-    if (query.offset) params.offset = query.offset;
+    if (query.limit !== undefined) params.limit = query.limit;
+    if (query.offset !== undefined) params.offset = query.offset;
 
     const response = await this.client.get(`/smell-analyses/${jobId}/findings`, { params });
     return this.unwrapResponse<SmellAnalysisFindingsResponseDto['data']>(response.data);
