@@ -4,6 +4,7 @@ dotenv.config();
 import { registerPyexamineTools } from './tools/pyexamine-tools';
 import { registerMetricsTools } from './tools/metrics-tools';
 import { registerAdvancedPyexamineTools } from './tools/advanced-pyexamine-tools';
+import { registerSmellAnalysisTools } from './tools/smell-analysis-tools';
 import { createStdIoTransport } from './stdio/stdio-transport';
 
 const LOG = console;
@@ -17,6 +18,7 @@ async function main() {
   registerPyexamineTools(transport);
   registerMetricsTools(transport);
   registerAdvancedPyexamineTools(transport);
+  registerSmellAnalysisTools(transport);
 
   // Keep process alive while transport works
   transport.start();
