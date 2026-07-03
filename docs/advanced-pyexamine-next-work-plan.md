@@ -121,6 +121,12 @@ MCP와 service 단독 검증은 완료된 상태다.
 다음 product-level 작업은 CodeVi backend에서 smell 분석 결과를 어떻게 저장하고
 조회할지 정하는 것이다.
 
+초기 contract 초안은 다음 문서에 정리했다.
+
+```text
+docs/codevi-smell-analysis-contract.md
+```
+
 정리해야 할 질문:
 
 - smell 분석 결과를 기존 `metric-analysis` 기록에 붙일 것인가?
@@ -136,7 +142,8 @@ MCP와 service 단독 검증은 완료된 상태다.
   - 원본 analyzer response
 - 실패한 smell 분석 job은 어떻게 표현할 것인가?
 
-이 부분은 backend 코드를 작성하기 전에 문서로 먼저 합의하는 것이 좋다.
+이 부분은 backend 코드를 작성하기 전에 위 contract 문서를 기준으로 먼저 합의하는
+것이 좋다.
 
 ### 2. 다국어 분석기 확장 설계
 
