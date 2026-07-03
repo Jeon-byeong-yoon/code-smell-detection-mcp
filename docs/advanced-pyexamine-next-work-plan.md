@@ -16,6 +16,8 @@
   - `mcp-server`
   - `advanced-pyexamine-service`
 - MCP stdio 요청부터 Python smell summary 응답까지 로컬 E2E 검증 완료
+- Docker Compose E2E CI workflow 추가
+- MCP HTTP mode와 service wrapper 에러 케이스 테스트 추가
 
 중요한 점은, 실제 smell 탐지 규칙과 분석 로직은 여전히 원본
 `advanced_pyexamine` repository가 소유한다는 점이다.
@@ -64,72 +66,55 @@ MCP stdio 요청
 즉, MCP 서버가 Docker Compose 내부에서 Python smell 분석 service를 호출하고,
 정상적으로 분석 결과를 받아오는 것까지 확인된 상태다.
 
-## 다음 추천 작업
+## 완료된 검증 보강
 
-### 1. CI에 Docker Compose E2E 검증 추가
+### Docker Compose E2E CI
 
-가장 먼저 할 작업은 로컬에서 검증한 Docker Compose 흐름을 CI로 옮기는 것이다.
+로컬에서 검증한 Docker Compose 흐름을 CI에 추가했다.
 
-목표:
-
-- PR이 올라올 때마다 MCP 서버가 `advanced-pyexamine-service`를 정상 호출하는지
-  자동 검증한다.
-- MCP tool contract, HTTP service contract, Docker build, Compose service 연결이
-  깨지면 CI에서 바로 실패하도록 만든다.
-
-추천 브랜치 이름:
-
-```text
-ci-advanced-pyexamine-compose-e2e
-```
-
-예상 추가 파일:
-
-```text
-.github/workflows/advanced-pyexamine-compose-e2e.yml
-test-fixtures/
-  python-smells/
-    ...
-```
-
-예상 CI 흐름:
+검증 흐름:
 
 ```text
 code-smell-detection-mcp checkout
-  -> advanced_pyexamine source 준비
+  -> test fixture 기반 advanced_pyexamine source 준비
   -> docker compose -f docker-compose.example.yml build
   -> docker compose -f docker-compose.example.yml run --rm -T mcp-server
   -> MCP 응답 JSON에서 smell summary 값 검증
 ```
 
-결정해야 할 점:
+관련 파일:
 
-- CI 환경에서도 `advanced_pyexamine` source가 필요하다.
-- 개발자 로컬 경로인 `/Users/...`에 의존하면 안 된다.
-- 따라서 CI에서는 다음 중 하나를 선택해야 한다.
-  - workflow 안에서 `advanced_pyexamine` repository를 checkout한다.
-  - 테스트용 fixture를 이 repository 안에 둔다.
-  - 장기적으로는 `advanced_pyexamine`을 package 또는 submodule로 관리한다.
+```text
+.github/workflows/advanced-pyexamine-compose-e2e.yml
+scripts/advanced-pyexamine-compose-e2e-test.js
+test-fixtures/advanced-pyexamine-source/
+docs/advanced-pyexamine-compose-ci.md
+```
 
-현재 단계에서는 workflow에서 분석기 source를 준비하는 방식이 가장 현실적이다.
+### 에러 케이스 테스트
 
-### 2. 에러 케이스 테스트 보강
+MCP HTTP mode와 service wrapper의 실패 응답을 검증하는 테스트를 추가했다.
 
-CI E2E가 들어간 뒤에는 실패 상황에 대한 테스트를 추가하는 것이 좋다.
+검증한 케이스:
 
-검증할 케이스:
-
-- 존재하지 않는 `projectPath`
-- advanced-pyexamine service 미실행
+- advanced-pyexamine service HTTP 500
+- service가 JSON object가 아닌 응답을 반환하는 경우
+- service 응답에 필수 필드가 없는 경우
 - HTTP service timeout
-- service가 잘못된 응답을 반환하는 경우
 - 잘못된 `limitPerGroup`
-- 지원하지 않는 mode 값
+- service wrapper의 404, 400, 500, 422 응답 변환
 
-목표는 단순히 실패시키는 것이 아니라, MCP client가 이해할 수 있는 안정적인
-에러 응답 형태를 보장하는 것이다.
+관련 파일:
 
-### 3. CodeVi backend 연동 contract 정리
+```text
+scripts/advanced-pyexamine-error-cases-test.js
+services/advanced-pyexamine/tests/test_main.py
+docs/advanced-pyexamine-error-handling.md
+```
+
+## 다음 추천 작업
+
+### 1. CodeVi backend 연동 contract 정리
 
 MCP와 service 단독 검증은 완료된 상태다.
 
@@ -153,7 +138,7 @@ MCP와 service 단독 검증은 완료된 상태다.
 
 이 부분은 backend 코드를 작성하기 전에 문서로 먼저 합의하는 것이 좋다.
 
-### 4. 다국어 분석기 확장 설계
+### 2. 다국어 분석기 확장 설계
 
 현재 구현은 Python 분석기인 `advanced_pyexamine`만 대상으로 한다.
 
@@ -181,26 +166,25 @@ MCP와 service 단독 검증은 완료된 상태다.
 
 ## 추천 작업 순서
 
-1. CI Docker Compose E2E workflow 추가
-2. CI에서 사용할 안정적인 Python smell fixture 또는 analyzer source 준비
-3. MCP 응답 summary 검증 추가
-4. 에러 케이스 테스트 추가
-5. CodeVi backend 연동 contract 문서 작성
-6. backend 저장/API 구현 시작
-7. TypeScript, Java, C analyzer adapter 설계
+1. CodeVi backend 연동 contract 문서 작성
+2. backend 저장/API 구현 시작
+3. TypeScript, Java, C analyzer adapter 설계
+4. 실제 운영 배포 방식 결정
+   - analyzer repository checkout
+   - package dependency
+   - submodule
+   - image 내부 vendoring
 
 ## 커밋 단위 제안
 
-다음 브랜치에서는 커밋을 작게 나누는 것이 좋다.
+다음 backend contract 브랜치에서는 커밋을 작게 나누는 것이 좋다.
 
 ```text
-ci: add advanced pyexamine compose e2e workflow
-test: add python smell fixture for compose e2e
-docs: document advanced pyexamine ci verification
+docs: define codevi smell analysis integration contract
+docs: document smell analysis persistence options
 ```
 
-CI 작업과 backend 저장/API 작업은 분리하는 것이 좋다.
+contract 문서 작업과 backend 저장/API 구현은 분리하는 것이 좋다.
 
-CI 작업은 현재 MCP/service 통합이 계속 정상 동작하는지 검증하는 작업이고,
-backend 작업은 제품 동작과 데이터 모델을 바꾸는 작업이기 때문에 별도 PR로
-검토하는 편이 안전하다.
+contract 문서는 팀 합의를 위한 작업이고, backend 구현은 제품 동작과 데이터 모델을
+바꾸는 작업이기 때문에 별도 PR로 검토하는 편이 안전하다.

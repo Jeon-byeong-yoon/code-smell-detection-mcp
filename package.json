@@ -10,6 +10,7 @@
     "test:advanced-pyexamine:http": "node scripts/advanced-pyexamine-http-smoke-test.js",
     "test:advanced-pyexamine:service": "node scripts/advanced-pyexamine-service-e2e-test.js",
     "test:advanced-pyexamine:compose": "node scripts/advanced-pyexamine-compose-e2e-test.js",
+    "test:advanced-pyexamine:errors": "node scripts/advanced-pyexamine-error-cases-test.js",
     "service:advanced-pyexamine": "sh scripts/run-advanced-pyexamine-service.sh",
     "build": "tsc -p tsconfig.json",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
