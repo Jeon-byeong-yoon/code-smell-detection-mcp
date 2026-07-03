@@ -11,6 +11,7 @@
 - MCP HTTP 클라이언트 (`src/clients/smell-analysis-client.ts`)
 - MCP tool 4개 (`src/tools/smell-analysis-tools.ts`)
 - CodeVi backend `smell-analysis` NestJS module 전체 skeleton
+- CodeVi backend와 `advanced-pyexamine-service` 간 실제 저장 E2E 검증
 
 ## 구현 환경
 
@@ -183,6 +184,151 @@ npm run build
 
 ---
 
+## 실제 E2E 검증 결과
+
+2026-07-03 기준으로 다음 흐름을 실제 로컬 Docker 환경에서 검증했다.
+
+```text
+MCP save_smell_analysis
+  -> CodeVi backend /api/smell-analyses
+  -> advanced-pyexamine-service /analyze
+  -> volume mount된 advanced_pyexamine repository 분석
+  -> CodeVi DB 저장
+  -> MCP get/list findings 조회
+```
+
+### 실행 전제
+
+CodeVi backend container는 analyzer service를 Docker network 내부 이름으로 호출한다.
+
+```env
+ADVANCED_PYEXAMINE_SERVICE_URL=http://advanced-pyexamine-service:18080
+```
+
+`advanced-pyexamine-service` container는 원본 pyexamine repository를 아래 경로로
+read-only mount해야 한다.
+
+```text
+/opt/advanced-pyexamine-source
+```
+
+따라서 MCP/CodeVi 요청의 `projectPath`는 host path가 아니라 analyzer container
+내부에서 보이는 경로를 사용해야 한다.
+
+검증에 사용한 경로:
+
+```text
+/opt/advanced-pyexamine-source/advanced_pyexamine
+```
+
+### 검증 명령
+
+```bash
+npm run build
+
+printf '%s\n' '{"id":"save-smell-1","tool":"save_smell_analysis","params":{"teamProjectId":1,"language":"python","analyzer":"advanced_pyexamine","projectPath":"/opt/advanced-pyexamine-source/advanced_pyexamine","options":{"only":"long_method,data_clumps","summaryOnly":false,"limitPerGroup":5}}}' \
+| SMELL_ANALYSIS_API_BASE_URL=http://localhost:13000/api \
+  SMELL_ANALYSIS_API_KEY="$JWT" \
+  node dist/server.js
+```
+
+### 저장 실행 결과
+
+```json
+{
+  "jobId": 2,
+  "status": "SUCCESS",
+  "teamProjectId": 1,
+  "language": "python",
+  "analyzer": "advanced_pyexamine",
+  "summary": {
+    "total": 43,
+    "bySeverity": {
+      "high": 11,
+      "medium": 32
+    },
+    "byName": {
+      "long_method": 41,
+      "data_clumps": 2
+    }
+  },
+  "response": {
+    "summaryOnly": false,
+    "returnedTotal": 7,
+    "truncated": true,
+    "limitPerGroup": 5
+  }
+}
+```
+
+`summary.total`은 analyzer가 탐지한 전체 smell 수이고, `returnedTotal`은
+`limitPerGroup: 5` 적용 후 응답 및 DB에 저장된 상세 finding 수다. 따라서
+`summary.total: 43`, `returnedTotal: 7`, `truncated: true` 조합은 정상이다.
+
+### 단건 조회 결과
+
+```bash
+printf '%s\n' '{"id":"get-smell-1","tool":"get_smell_analysis","params":{"jobId":2}}' \
+| SMELL_ANALYSIS_API_BASE_URL=http://localhost:13000/api \
+  SMELL_ANALYSIS_API_KEY="$JWT" \
+  node dist/server.js
+```
+
+검증 결과:
+
+- `jobId: 2`
+- `status: SUCCESS`
+- `summaryTotal: 43`
+- `summaryBySeverity.high: 11`
+- `summaryBySeverity.medium: 32`
+- `findings` 배열 포함
+- `errorMessage: null`
+- `errorCode: null`
+
+### Finding 페이지 조회 결과
+
+```bash
+printf '%s\n' '{"id":"findings-smell-1","tool":"list_smell_findings","params":{"jobId":2,"limit":5,"offset":0}}' \
+| SMELL_ANALYSIS_API_BASE_URL=http://localhost:13000/api \
+  SMELL_ANALYSIS_API_KEY="$JWT" \
+  node dist/server.js
+```
+
+검증 결과:
+
+```json
+{
+  "items": [
+    {
+      "name": "long_method",
+      "category": "size_metric",
+      "severity": "high",
+      "filePath": "/opt/advanced-pyexamine-source/advanced_pyexamine/core/module_index.py",
+      "lineStart": 110,
+      "lineEnd": 159
+    }
+  ],
+  "total": 7,
+  "limit": 5,
+  "offset": 0
+}
+```
+
+### 결론
+
+아래 흐름은 정상 동작으로 확인했다.
+
+- MCP server build
+- `save_smell_analysis` 실행
+- CodeVi backend 인증 및 teamProject 접근
+- backend에서 analyzer service 호출
+- 실제 `advanced_pyexamine` detector 실행
+- smell summary 및 finding DB 저장
+- `get_smell_analysis` 상세 조회
+- `list_smell_findings` pagination 조회
+
+---
+
 ## 다음 작업
 
 ### 즉시 할 수 있는 것
@@ -209,7 +355,7 @@ npm run build
        "teamProjectId": 1,
        "language": "python",
        "analyzer": "advanced_pyexamine",
-       "projectPath": "/opt/advanced-pyexamine-source/sample-project",
+       "projectPath": "/opt/advanced-pyexamine-source/advanced_pyexamine",
        "options": { "only": "long_method,data_clumps", "summaryOnly": true }
      }'
 
@@ -229,7 +375,7 @@ npm run build
 3. **MCP tool 연동 smoke test**
 
    ```bash
-   printf '%s\n' '{"id":"save-1","tool":"save_smell_analysis","params":{"teamProjectId":1,"language":"python","analyzer":"advanced_pyexamine","projectPath":"/opt/project","options":{"summaryOnly":true}}}' \
+   printf '%s\n' '{"id":"save-1","tool":"save_smell_analysis","params":{"teamProjectId":1,"language":"python","analyzer":"advanced_pyexamine","projectPath":"/opt/advanced-pyexamine-source/advanced_pyexamine","options":{"summaryOnly":true}}}' \
    | SMELL_ANALYSIS_API_BASE_URL=http://localhost:13000/api \
      SMELL_ANALYSIS_API_KEY="$JWT" \
      node dist/server.js
@@ -237,9 +383,10 @@ npm run build
 
 ### 이후 작업
 
+- analyzer container 실행 방식을 CodeVi compose 또는 별도 compose로 고정
+- frontend dashboard smell analysis 카드 및 상세 테이블 연동
+- CodeVi backend integration/e2e test 추가
 - TypeScript, Java, C analyzer adapter 설계 (다국어 확장)
-- frontend dashboard smell analysis 카드 연동
-- integration test 추가
 
 ## 결정 사항 반영
 

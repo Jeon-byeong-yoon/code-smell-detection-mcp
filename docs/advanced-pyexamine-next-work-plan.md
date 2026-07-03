@@ -18,6 +18,11 @@
 - MCP stdio 요청부터 Python smell summary 응답까지 로컬 E2E 검증 완료
 - Docker Compose E2E CI workflow 추가
 - MCP HTTP mode와 service wrapper 에러 케이스 테스트 추가
+- CodeVi backend smell-analysis 저장/조회 module 구현
+- MCP `save_smell_analysis`, `list_smell_analyses`, `get_smell_analysis`,
+  `list_smell_findings` 도구 추가
+- MCP -> CodeVi backend -> advanced-pyexamine-service -> DB 저장 -> MCP 조회
+  E2E 검증 완료
 
 중요한 점은, 실제 smell 탐지 규칙과 분석 로직은 여전히 원본
 `advanced_pyexamine` repository가 소유한다는 점이다.
@@ -66,6 +71,44 @@ MCP stdio 요청
 즉, MCP 서버가 Docker Compose 내부에서 Python smell 분석 service를 호출하고,
 정상적으로 분석 결과를 받아오는 것까지 확인된 상태다.
 
+CodeVi backend 저장 흐름도 추가로 검증했다.
+
+```text
+MCP save_smell_analysis
+  -> CodeVi backend /api/smell-analyses
+  -> advanced-pyexamine-service /analyze
+  -> volume mount된 advanced_pyexamine repository
+  -> smell 분석 실행
+  -> CodeVi DB 저장
+  -> MCP get_smell_analysis / list_smell_findings 조회
+```
+
+대표 CodeVi 저장 E2E 결과:
+
+```json
+{
+  "jobId": 2,
+  "status": "SUCCESS",
+  "summary": {
+    "total": 43,
+    "bySeverity": {
+      "high": 11,
+      "medium": 32
+    },
+    "byName": {
+      "long_method": 41,
+      "data_clumps": 2
+    }
+  },
+  "response": {
+    "summaryOnly": false,
+    "returnedTotal": 7,
+    "truncated": true,
+    "limitPerGroup": 5
+  }
+}
+```
+
 ## 완료된 검증 보강
 
 ### Docker Compose E2E CI
@@ -112,40 +155,93 @@ services/advanced-pyexamine/tests/test_main.py
 docs/advanced-pyexamine-error-handling.md
 ```
 
-## 다음 추천 작업
+## 완료된 CodeVi backend 연동 작업
 
-### 1. CodeVi backend 연동 contract 정리
+CodeVi backend에서 smell 분석 결과를 저장하고 조회하는 흐름은 1차 구현 및
+검증을 완료했다.
 
-MCP와 service 단독 검증은 완료된 상태다.
-
-다음 product-level 작업은 CodeVi backend에서 smell 분석 결과를 어떻게 저장하고
-조회할지 정하는 것이다.
-
-초기 contract 초안은 다음 문서에 정리했다.
+관련 문서:
 
 ```text
 docs/codevi-smell-analysis-contract.md
+docs/codevi-smell-analysis-backend-2026-07-03.md
 ```
 
-정리해야 할 질문:
+현재 반영된 결정:
 
-- smell 분석 결과를 기존 `metric-analysis` 기록에 붙일 것인가?
-- 아니면 별도의 `smell-analysis` domain으로 분리할 것인가?
-- DB에 저장할 최소 단위는 무엇인가?
-  - `teamProjectId`
-  - `jobId`
-  - `language`
-  - summary total
+- smell 분석 결과는 별도 `smell-analysis` domain으로 분리
+- summary와 상세 finding을 분리 저장
+- raw analyzer response 보존
+- FAILED job 저장
+- CodeVi backend가 `advanced-pyexamine-service`를 직접 HTTP 호출
+- MCP는 CodeVi backend API를 호출하는 client/tool 역할 담당
+
+## 다음 추천 작업
+
+### 1. Analyzer container 실행 방식 고정
+
+현재 E2E 검증은 수동으로 analyzer container를 다음 조건으로 재생성해서 통과했다.
+
+```text
+container name: advanced-pyexamine-service
+network: shared-net
+network alias: advanced-pyexamine-service
+volume:
+  host pyexamine repo
+  -> /opt/advanced-pyexamine-source:ro
+```
+
+남은 문제는 이 실행 조건이 아직 운영 compose에 완전히 고정되어 있지 않다는 점이다.
+
+다음 중 하나로 정리해야 한다.
+
+- CodeVi `docker-compose.prod.yml`에 `advanced-pyexamine-service`를 정식 service로 추가
+- 또는 `code-smell-detection-mcp`의 compose를 CodeVi shared network에 붙이는 별도 compose 제공
+- 개발자용 실행 스크립트 추가
+
+목표는 backend 재기동 후에도 analyzer service alias와 volume mount가 유지되는 것이다.
+
+### 2. CodeVi frontend dashboard 연동
+
+backend 저장/조회 API가 동작하므로 다음 product-level 작업은 frontend 표시다.
+
+필요 화면:
+
+- smell analysis 실행 버튼 또는 Jenkins build 후 자동 실행 상태 표시
+- latest smell summary 카드
+  - total
   - severity별 개수
   - smell name별 개수
-  - 상세 smell 목록
-  - 원본 analyzer response
-- 실패한 smell 분석 job은 어떻게 표현할 것인가?
+- finding table
+  - severity
+  - name
+  - category
+  - filePath
+  - lineStart/lineEnd
+  - entity
+  - message
+- 필터
+  - severity
+  - name
+  - category
+  - filePath
 
-이 부분은 backend 코드를 작성하기 전에 위 contract 문서를 기준으로 먼저 합의하는
-것이 좋다.
+### 3. CodeVi backend integration/e2e test 추가
 
-### 2. 다국어 분석기 확장 설계
+현재는 로컬 수동 E2E로 검증했다.
+
+추가하면 좋은 테스트:
+
+- `POST /api/smell-analyses` 성공 시 SUCCESS job 저장
+- analyzer 404/500 시 FAILED job 저장
+- `GET /api/smell-analyses` pagination 및 filter 검증
+- `GET /api/smell-analyses/:id/findings` pagination 및 filter 검증
+- 권한 없는 teamProjectId 접근 시 403 검증
+
+이 테스트는 analyzer service를 실제로 띄우기보다 mock HTTP server 또는 service
+client mock으로 시작하는 것이 빠르다.
+
+### 4. 다국어 분석기 확장 설계
 
 현재 구현은 Python 분석기인 `advanced_pyexamine`만 대상으로 한다.
 
@@ -173,10 +269,11 @@ docs/codevi-smell-analysis-contract.md
 
 ## 추천 작업 순서
 
-1. CodeVi backend 연동 contract 문서 작성
-2. backend 저장/API 구현 시작
-3. TypeScript, Java, C analyzer adapter 설계
-4. 실제 운영 배포 방식 결정
+1. analyzer container 실행 방식을 compose/script로 고정
+2. CodeVi backend integration/e2e test 추가
+3. CodeVi frontend dashboard 연동
+4. TypeScript, Java, C analyzer adapter 설계
+5. 실제 운영 배포 방식 결정
    - analyzer repository checkout
    - package dependency
    - submodule
@@ -184,14 +281,13 @@ docs/codevi-smell-analysis-contract.md
 
 ## 커밋 단위 제안
 
-다음 backend contract 브랜치에서는 커밋을 작게 나누는 것이 좋다.
+다음 작업도 커밋을 작게 나누는 것이 좋다.
 
 ```text
-docs: define codevi smell analysis integration contract
-docs: document smell analysis persistence options
+chore: add advanced pyexamine service runtime compose
+test: add smell analysis backend integration coverage
+feat: connect smell analysis dashboard summary
 ```
 
-contract 문서 작업과 backend 저장/API 구현은 분리하는 것이 좋다.
-
-contract 문서는 팀 합의를 위한 작업이고, backend 구현은 제품 동작과 데이터 모델을
-바꾸는 작업이기 때문에 별도 PR로 검토하는 편이 안전하다.
+compose/runtime 정리, backend test, frontend 연동은 변경 범위가 다르므로 별도 PR로
+나누는 편이 안전하다.
