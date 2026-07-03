@@ -25,14 +25,14 @@ class MainRouteTest(unittest.TestCase):
 
     def test_analyze_returns_400_for_value_error(self):
         with patch("app.main.analyze_project", side_effect=ValueError("invalid detector")):
-            response = self.client.post("/analyze", json={"projectPath": "/tmp/project"})
+            response = self.client.post("/analyze", json={"projectPath": "fixtures/sample_project"})
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["detail"], "invalid detector")
 
     def test_analyze_returns_500_for_unexpected_error(self):
         with patch("app.main.analyze_project", side_effect=RuntimeError("import failed")):
-            response = self.client.post("/analyze", json={"projectPath": "/tmp/project"})
+            response = self.client.post("/analyze", json={"projectPath": "fixtures/sample_project"})
 
         self.assertEqual(response.status_code, 500)
         self.assertIn("Failed to analyze project: import failed", response.json()["detail"])
@@ -40,7 +40,7 @@ class MainRouteTest(unittest.TestCase):
     def test_analyze_rejects_invalid_limit_per_group(self):
         response = self.client.post(
             "/analyze",
-            json={"projectPath": "/tmp/project", "limitPerGroup": 0},
+            json={"projectPath": "fixtures/sample_project", "limitPerGroup": 0},
         )
 
         self.assertEqual(response.status_code, 422)
