@@ -3,6 +3,7 @@ dotenv.config();
 
 import { registerPyexamineTools } from './tools/pyexamine-tools';
 import { registerMetricsTools } from './tools/metrics-tools';
+import { registerAdvancedPyexamineTools } from './tools/advanced-pyexamine-tools';
 import { createStdIoTransport } from './stdio/stdio-transport';
 
 const LOG = console;
@@ -15,6 +16,7 @@ async function main() {
   // Register tool handlers (transport에 이벤트 핸들러 등록)
   registerPyexamineTools(transport);
   registerMetricsTools(transport);
+  registerAdvancedPyexamineTools(transport);
 
   // Keep process alive while transport works
   transport.start();

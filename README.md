@@ -26,7 +26,15 @@ npm run dev
 npm run build
 ```
 
-4. 실행 (빌드 후)
+4. 테스트
+
+```bash
+npm run test:stdio
+npm run test:advanced-pyexamine
+npm run test:advanced-pyexamine:http
+```
+
+5. 실행 (빌드 후)
 
 ```bash
 npm start
@@ -36,7 +44,96 @@ npm start
 복사하여 `.env`로 사용:
 - `ANALYSIS_API_BASE_URL` (예: http://localhost:13000/api)
 - `REQUEST_TIMEOUT_MS`
-- `DEFAULT_TEAM_PROJECT_ID`
+- `METRICS_API_BASE_URL` (예: http://localhost:14000)
+- `METRICS_API_KEY` (필요 시)
+- `METRICS_DEFAULT_TEAM_PROJECT_ID`
+- `METRICS_REQUEST_TIMEOUT_MS`
+- `ADVANCED_PYEXAMINE_BIN` (기본값: `python`)
+- `ADVANCED_PYEXAMINE_ARGS` (기본값: `-m,advanced_pyexamine`)
+- `ADVANCED_PYEXAMINE_CWD` (예: advanced_pyexamine 레포 루트)
+- `ADVANCED_PYEXAMINE_TIMEOUT_MS`
+- `ADVANCED_PYEXAMINE_MODE` (`cli` 또는 `http`, 기본값: `cli`)
+- `ADVANCED_PYEXAMINE_SERVICE_URL` (HTTP mode, 예: http://localhost:18080)
+- `ADVANCED_PYEXAMINE_SERVICE_TIMEOUT_MS`
+- `ADVANCED_PYEXAMINE_SOURCE_DIR` (service 실행 시 advanced_pyexamine 원본 repo 경로)
+- `ADVANCED_PYEXAMINE_E2E_PROJECT_PATH` (실제 service E2E 테스트 대상 Python project path)
+
+## 제공 도구
+
+### Metrics Analysis
+
+- `list_metric_analyses`: CodeVi metric analysis 이력 목록 조회
+- `run_metric_analysis`: CodeVi metric analysis 실행 및 저장
+- `get_metric_analysis`: 저장된 metric analysis 단건 조회
+
+### PyExamine / Code Analysis
+
+- `get_latest_pyexamine_result`: 최신 PyExamine 결과 조회
+- `get_pyexamine_result_by_commit`: commit hash 기준 PyExamine 결과 조회
+- `get_high_severity_smells`: high severity smell 조회
+- `get_smells_by_file`: 파일 경로 기준 smell 조회
+
+### Advanced PyExamine
+
+- `analyze_python_smells`: Python 프로젝트 smell 결과를 JSON으로 반환
+  - `ADVANCED_PYEXAMINE_MODE=cli`: `advanced_pyexamine` CLI를 subprocess로 실행
+  - `ADVANCED_PYEXAMINE_MODE=http`: `services/advanced-pyexamine` HTTP service의 `/analyze` 호출
+
+CLI mode 예시:
+
+```bash
+printf '%s\n' '{"id":"py-smell-1","tool":"analyze_python_smells","params":{"projectPath":"/path/to/python/project"}}' \
+| ADVANCED_PYEXAMINE_MODE=cli \
+  ADVANCED_PYEXAMINE_BIN=python \
+  ADVANCED_PYEXAMINE_ARGS=-m,advanced_pyexamine \
+  ADVANCED_PYEXAMINE_CWD="/path/to/pyexamine 2" \
+  node dist/server.js
+```
+
+HTTP mode 예시:
+
+```bash
+printf '%s\n' '{"id":"py-smell-5","tool":"analyze_python_smells","params":{"projectPath":"/path/to/python/project","summaryOnly":true}}' \
+| ADVANCED_PYEXAMINE_MODE=http \
+  ADVANCED_PYEXAMINE_SERVICE_URL=http://localhost:18080 \
+  node dist/server.js
+```
+
+HTTP service 실행:
+
+```bash
+ADVANCED_PYEXAMINE_SOURCE_DIR="/path/to/pyexamine 2" npm run service:advanced-pyexamine
+```
+
+실제 HTTP service E2E 검증:
+
+```bash
+ADVANCED_PYEXAMINE_SERVICE_URL=http://localhost:18080 \
+ADVANCED_PYEXAMINE_E2E_PROJECT_PATH="/path/to/python/project" \
+npm run test:advanced-pyexamine:service
+```
+
+특정 detector만 실행하려면 `only`를 전달합니다.
+
+```json
+{ "id": "py-smell-2", "tool": "analyze_python_smells", "params": { "projectPath": "/path/to/python/project", "only": "orphan_module,data_clumps" } }
+```
+
+응답이 너무 큰 경우 `summaryOnly` 또는 `limitPerGroup`을 사용할 수 있습니다.
+
+```json
+{ "id": "py-smell-3", "tool": "analyze_python_smells", "params": { "projectPath": "/path/to/python/project", "summaryOnly": true } }
+```
+
+```json
+{ "id": "py-smell-4", "tool": "analyze_python_smells", "params": { "projectPath": "/path/to/python/project", "limitPerGroup": 5 } }
+```
+
+`summary`는 항상 전체 탐지 결과 기준이며, `limitPerGroup`은 반환되는 `smellGroups`만 제한합니다.
+
+`test:advanced-pyexamine`은 실제 `advanced_pyexamine` 레포 없이 mock CLI로 `summary`, `summaryOnly`, `limitPerGroup` 응답 처리를 검증합니다.
+`test:advanced-pyexamine:http`는 mock HTTP service로 MCP HTTP mode forwarding과 응답 처리를 검증합니다.
+`test:advanced-pyexamine:service`는 이미 실행 중인 실제 FastAPI service를 대상으로 `/health`, `/analyze`, MCP HTTP mode를 함께 검증합니다.
 
 ## 원본 코드 분리 가이드
 - 복사할 파일: `code-vi-internal/code-vi-back/src/mcp/codevi-metrics-server.ts`
