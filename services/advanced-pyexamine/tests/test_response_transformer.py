@@ -26,7 +26,7 @@ class ResponseTransformerTest(unittest.TestCase):
 
     def test_summary_only_omits_smell_groups(self):
         response = build_response(
-            project_path="/tmp/project",
+            project_path="fixtures/sample_project",
             smell_groups=SMELL_GROUPS,
             summary_only=True,
         )
@@ -38,7 +38,7 @@ class ResponseTransformerTest(unittest.TestCase):
 
     def test_limit_per_group_limits_details_only(self):
         response = build_response(
-            project_path="/tmp/project",
+            project_path="fixtures/sample_project",
             smell_groups=SMELL_GROUPS,
             limit_per_group=1,
         )
