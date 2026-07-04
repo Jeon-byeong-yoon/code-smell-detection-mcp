@@ -129,6 +129,33 @@ printf '%s\n' '{"id":"compose-e2e-1","tool":"analyze_python_smells","params":{"p
 
 통합 Compose workflow는 `docs/mcp-advanced-pyexamine-compose.md`를 참고합니다.
 
+CodeVi backend에서 `advanced-pyexamine-service`를 호출할 수 있도록 runtime service만
+고정 실행:
+
+```bash
+ADVANCED_PYEXAMINE_HOST_SOURCE_DIR="/path/to/pyexamine 2" \
+npm run compose:codevi-runtime:up
+```
+
+이 compose는 `advanced-pyexamine-service`를 외부 Docker network `shared-net`에
+연결하고, CodeVi backend가 `http://advanced-pyexamine-service:18080`으로 호출할 수
+있게 network alias를 고정합니다.
+
+CodeVi backend에 전달할 분석 경로는 host path가 아니라 container path를 사용합니다.
+
+```text
+/opt/advanced-pyexamine-source/advanced_pyexamine
+```
+
+중지:
+
+```bash
+ADVANCED_PYEXAMINE_HOST_SOURCE_DIR="/path/to/pyexamine 2" \
+npm run compose:codevi-runtime:down
+```
+
+자세한 CodeVi runtime workflow는 `docs/advanced-pyexamine-codevi-runtime.md`를 참고합니다.
+
 실제 HTTP service E2E 검증:
 
 ```bash

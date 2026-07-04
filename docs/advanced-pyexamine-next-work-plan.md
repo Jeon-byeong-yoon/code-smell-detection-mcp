@@ -23,6 +23,8 @@
   `list_smell_findings` 도구 추가
 - MCP -> CodeVi backend -> advanced-pyexamine-service -> DB 저장 -> MCP 조회
   E2E 검증 완료
+- CodeVi backend에서 호출 가능한 analyzer runtime compose 추가
+- runtime compose 기반 CodeVi 저장 E2E 검증 완료
 
 중요한 점은, 실제 smell 탐지 규칙과 분석 로직은 여전히 원본
 `advanced_pyexamine` repository가 소유한다는 점이다.
@@ -180,10 +182,10 @@ docs/codevi-smell-analysis-backend-2026-07-03.md
 
 ### 1. Analyzer container 실행 방식 고정
 
-현재 E2E 검증은 수동으로 analyzer container를 다음 조건으로 재생성해서 통과했다.
+CodeVi backend가 호출하는 analyzer container 실행 조건은
+`docker-compose.codevi-runtime.yml`로 고정했다.
 
 ```text
-container name: advanced-pyexamine-service
 network: shared-net
 network alias: advanced-pyexamine-service
 volume:
@@ -191,15 +193,40 @@ volume:
   -> /opt/advanced-pyexamine-source:ro
 ```
 
-남은 문제는 이 실행 조건이 아직 운영 compose에 완전히 고정되어 있지 않다는 점이다.
+실행 명령:
 
-다음 중 하나로 정리해야 한다.
+```bash
+ADVANCED_PYEXAMINE_HOST_SOURCE_DIR="/path/to/pyexamine 2" \
+npm run compose:codevi-runtime:up
+```
 
-- CodeVi `docker-compose.prod.yml`에 `advanced-pyexamine-service`를 정식 service로 추가
-- 또는 `code-smell-detection-mcp`의 compose를 CodeVi shared network에 붙이는 별도 compose 제공
-- 개발자용 실행 스크립트 추가
+관련 문서:
 
-목표는 backend 재기동 후에도 analyzer service alias와 volume mount가 유지되는 것이다.
+```text
+docs/advanced-pyexamine-codevi-runtime.md
+```
+
+해당 runtime compose로 다음 흐름도 검증 완료했다.
+
+```text
+runtime compose up
+  -> analyzer service healthy
+  -> MCP save_smell_analysis
+  -> CodeVi DB 저장
+  -> get_smell_analysis / list_smell_findings 조회
+```
+
+검증 결과:
+
+- `jobId: 3`
+- `status: SUCCESS`
+- `summary.total: 43`
+- `summary.byName.long_method: 41`
+- `summary.byName.data_clumps: 2`
+- `list_smell_findings.total: 7`
+
+남은 선택지는 이 runtime compose를 CodeVi repository의 운영 compose에 흡수할지,
+별도 compose로 유지할지 결정하는 것이다.
 
 ### 2. CodeVi frontend dashboard 연동
 
@@ -269,11 +296,10 @@ client mock으로 시작하는 것이 빠르다.
 
 ## 추천 작업 순서
 
-1. analyzer container 실행 방식을 compose/script로 고정
-2. CodeVi backend integration/e2e test 추가
-3. CodeVi frontend dashboard 연동
-4. TypeScript, Java, C analyzer adapter 설계
-5. 실제 운영 배포 방식 결정
+1. CodeVi backend integration/e2e test 추가
+2. CodeVi frontend dashboard 연동
+3. TypeScript, Java, C analyzer adapter 설계
+4. 실제 운영 배포 방식 결정
    - analyzer repository checkout
    - package dependency
    - submodule

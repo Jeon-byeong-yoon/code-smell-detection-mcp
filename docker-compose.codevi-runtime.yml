@@ -1,0 +1,27 @@
+services:
+  advanced-pyexamine-service:
+    build:
+      context: ./services/advanced-pyexamine
+    image: advanced-pyexamine-service:local
+    environment:
+      ADVANCED_PYEXAMINE_SOURCE_DIR: /opt/advanced-pyexamine-source
+    volumes:
+      - "${ADVANCED_PYEXAMINE_HOST_SOURCE_DIR:?Set ADVANCED_PYEXAMINE_HOST_SOURCE_DIR to the pyexamine repository root}:/opt/advanced-pyexamine-source:ro"
+    networks:
+      shared-net:
+        aliases:
+          - advanced-pyexamine-service
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18080/health', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+networks:
+  shared-net:
+    external: true
