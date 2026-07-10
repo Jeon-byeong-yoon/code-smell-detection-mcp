@@ -50,19 +50,23 @@ This builds:
 Because the MCP server communicates over stdio, use `docker compose run -T`:
 
 ```bash
-printf '%s\n' '{"id":"compose-e2e-1","tool":"analyze_python_smells","params":{"projectPath":"/opt/advanced-pyexamine-source/advanced_pyexamine","only":"long_method,data_clumps","summaryOnly":true}}' \
+printf '%s\n' \
+ '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"compose-e2e","version":"1"}}}' \
+ '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+ '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"analyze_python_smells","arguments":{"projectPath":"/opt/advanced-pyexamine-source/advanced_pyexamine","only":"long_method,data_clumps","summaryOnly":true}}}' \
 | ADVANCED_PYEXAMINE_HOST_SOURCE_DIR="/path/to/pyexamine 2" \
   docker compose -f docker-compose.example.yml run --rm -T mcp-server
 ```
 
-Expected result shape:
+Expected result shape (`id: 2` 응답의 `result.structuredContent`):
 
 ```json
 {
-  "id": "compose-e2e-1",
+  "jsonrpc": "2.0",
+  "id": 2,
   "result": {
-    "ok": true,
-    "result": {
+    "content": [{ "type": "text", "text": "{ ...JSON... }" }],
+    "structuredContent": {
       "tool": "advanced_pyexamine",
       "language": "python",
       "summary": {

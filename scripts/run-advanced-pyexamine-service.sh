@@ -24,5 +24,10 @@ cd "$SERVICE_DIR"
 
 echo "Starting advanced-pyexamine-service on http://$HOST:$PORT"
 echo "ADVANCED_PYEXAMINE_SOURCE_DIR=$ADVANCED_PYEXAMINE_SOURCE_DIR"
+echo "Allowed analysis roots: ${ADVANCED_PYEXAMINE_ALLOWED_ROOTS:-$ADVANCED_PYEXAMINE_SOURCE_DIR (fallback)}"
+echo "Analyzing a project outside the source dir requires ADVANCED_PYEXAMINE_ALLOWED_ROOTS=<dir1,dir2>."
+if [ -z "${ADVANCED_PYEXAMINE_SHARED_SECRET:-}" ]; then
+  echo "WARNING: ADVANCED_PYEXAMINE_SHARED_SECRET is not set — /analyze runs without authentication." >&2
+fi
 
 exec python -m uvicorn app.main:app --host "$HOST" --port "$PORT"

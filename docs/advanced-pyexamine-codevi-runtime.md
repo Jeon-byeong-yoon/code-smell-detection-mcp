@@ -25,6 +25,15 @@ CodeVi backend container
 중요한 점은 `projectPath`가 host path가 아니라
 `advanced-pyexamine-service` container 내부에서 보이는 path여야 한다는 것이다.
 
+## 보안 설정
+
+- service는 `ADVANCED_PYEXAMINE_ALLOWED_ROOTS`(runtime compose에서
+  `/opt/advanced-pyexamine-source`로 고정) 밖의 `projectPath`를 403으로 거부한다.
+- `ADVANCED_PYEXAMINE_SHARED_SECRET`을 host env로 설정하면 `/analyze`가
+  `X-Internal-Token` 헤더를 요구한다. **CodeVi backend가 같은 헤더를 보내도록
+  배포된 뒤에 활성화할 것** (미설정 시 인증 생략 — allowlist는 항상 적용).
+- compose에서 service에 `cpus: 1.0`, `mem_limit: 1g` 상한이 걸려 있다.
+
 검증에 사용한 Python project path:
 
 ```text
@@ -132,26 +141,26 @@ docker exec codevi-backend node -e "fetch('http://advanced-pyexamine-service:180
 MCP repo에서 실행한다.
 
 ```bash
-printf '%s\n' '{"id":"save-smell-1","tool":"save_smell_analysis","params":{"teamProjectId":1,"language":"python","analyzer":"advanced_pyexamine","projectPath":"/opt/advanced-pyexamine-source/advanced_pyexamine","options":{"only":"long_method,data_clumps","summaryOnly":false,"limitPerGroup":5}}}' \
+printf '%s\n' \
+ '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"runtime-e2e","version":"1"}}}' \
+ '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+ '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"save_smell_analysis","arguments":{"teamProjectId":1,"language":"python","analyzer":"advanced_pyexamine","projectPath":"/opt/advanced-pyexamine-source/advanced_pyexamine","options":{"only":"long_method,data_clumps","summaryOnly":false,"limitPerGroup":5}}}}' \
 | SMELL_ANALYSIS_API_BASE_URL=http://localhost:13000/api \
   SMELL_ANALYSIS_API_KEY="$JWT" \
   node dist/server.js
 ```
 
-예상 결과:
+예상 결과 (`id: 2` 응답의 `result.structuredContent`):
 
 ```json
 {
-  "ok": true,
-  "result": {
-    "status": "SUCCESS",
-    "summary": {
-      "total": 43
-    },
-    "response": {
-      "returnedTotal": 7,
-      "truncated": true
-    }
+  "status": "SUCCESS",
+  "summary": {
+    "total": 43
+  },
+  "response": {
+    "returnedTotal": 7,
+    "truncated": true
   }
 }
 ```

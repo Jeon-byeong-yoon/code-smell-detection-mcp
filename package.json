@@ -1,9 +1,12 @@
 {
   "name": "code-smell-detection-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server for static analysis / code smell detection (TypeScript, stdio transport)",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
+  "bin": {
+    "code-smell-detection-mcp": "dist/server.js"
+  },
   "scripts": {
     "test:stdio": "node scripts/stdio-test-client.js",
     "test:advanced-pyexamine": "node scripts/advanced-pyexamine-smoke-test.js",
@@ -30,16 +33,18 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "axios": "^1.4.0",
-    "dotenv": "^16.0.0"
+    "dotenv": "^16.0.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.0.0",
-    "rimraf": "^4.0.0",
-    "eslint": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^5.0.0",
     "@typescript-eslint/parser": "^5.0.0",
-    "@typescript-eslint/eslint-plugin": "^5.0.0"
+    "eslint": "^8.0.0",
+    "rimraf": "^4.0.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.0.0"
   }
 }

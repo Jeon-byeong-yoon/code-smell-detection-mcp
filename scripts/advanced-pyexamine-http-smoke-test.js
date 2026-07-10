@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
+const { createMcpTestClient, unwrapToolResult } = require('./mcp-test-client');
 
 const repoRoot = path.resolve(__dirname, '..');
 const serverPath = path.join(repoRoot, 'dist', 'server.js');
@@ -11,8 +12,11 @@ function assert(condition, message) {
   }
 }
 
+const SHARED_SECRET = 'http-smoke-shared-secret';
+
 function startMockAdvancedPyexamineService() {
   let lastRequestBody = null;
+  let lastRequestHeaders = null;
 
   const server = http.createServer((req, res) => {
     if (req.method !== 'POST' || req.url !== '/analyze') {
@@ -28,6 +32,7 @@ function startMockAdvancedPyexamineService() {
     });
     req.on('end', () => {
       lastRequestBody = JSON.parse(body);
+      lastRequestHeaders = req.headers;
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
@@ -67,6 +72,7 @@ function startMockAdvancedPyexamineService() {
         baseUrl: `http://127.0.0.1:${address.port}`,
         close: () => new Promise((closeResolve) => server.close(closeResolve)),
         getLastRequestBody: () => lastRequestBody,
+        getLastRequestHeaders: () => lastRequestHeaders,
       });
     });
   });
@@ -81,92 +87,33 @@ function startServer(serviceUrl) {
       ADVANCED_PYEXAMINE_MODE: 'http',
       ADVANCED_PYEXAMINE_SERVICE_URL: serviceUrl,
       ADVANCED_PYEXAMINE_SERVICE_TIMEOUT_MS: '10000',
+      ADVANCED_PYEXAMINE_SHARED_SECRET: SHARED_SECRET,
     },
   });
-}
-
-function createJsonLineReader(proc) {
-  let buffer = '';
-  const pending = new Map();
-
-  proc.stdout.setEncoding('utf8');
-  proc.stdout.on('data', (chunk) => {
-    buffer += chunk;
-    let newlineIndex;
-
-    while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, newlineIndex).trim();
-      buffer = buffer.slice(newlineIndex + 1);
-      if (!line) continue;
-
-      let message;
-      try {
-        message = JSON.parse(line);
-      } catch {
-        continue;
-      }
-
-      const entry = pending.get(message.id);
-      if (entry) {
-        pending.delete(message.id);
-        entry.resolve(message);
-      }
-    }
-  });
-
-  return {
-    request(id, tool, params) {
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          pending.delete(id);
-          reject(new Error(`Timed out waiting for response id=${id}`));
-        }, 10000);
-
-        pending.set(id, {
-          resolve: (message) => {
-            clearTimeout(timeout);
-            resolve(message);
-          },
-          reject,
-        });
-
-        proc.stdin.write(JSON.stringify({ id, tool, params }) + '\n');
-      });
-    },
-    rejectAll(error) {
-      for (const [id, entry] of pending.entries()) {
-        pending.delete(id);
-        entry.reject?.(error);
-      }
-    },
-  };
-}
-
-function unwrapOk(message) {
-  assert(!message.error, `expected no error, got ${message.error}`);
-  assert(message.result?.ok === true, `expected ok=true for ${message.id}`);
-  return message.result.result;
 }
 
 async function run() {
   console.log('Starting advanced_pyexamine HTTP mode smoke test...');
   const mockService = await startMockAdvancedPyexamineService();
   const server = startServer(mockService.baseUrl);
-  const reader = createJsonLineReader(server);
+  const client = createMcpTestClient(server);
 
   server.on('error', (error) => {
-    reader.rejectAll(error);
+    client.rejectAll(error);
   });
 
   try {
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await client.initialize();
 
-    const result = unwrapOk(await reader.request('http-mode', 'analyze_python_smells', {
+    const result = unwrapToolResult(await client.callTool('analyze_python_smells', {
       projectPath: '/mock/project',
       only: 'long_method,data_clumps',
       summaryOnly: false,
       limitPerGroup: 1,
     }));
+
+    const requestHeaders = mockService.getLastRequestHeaders();
+    assert(requestHeaders['x-internal-token'] === SHARED_SECRET, 'expected X-Internal-Token header to be forwarded');
 
     const requestBody = mockService.getLastRequestBody();
     assert(requestBody.projectPath === '/mock/project', 'expected projectPath to be forwarded');

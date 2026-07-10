@@ -12,6 +12,20 @@ Current status:
 - `Smell` objects are normalized to the same response shape expected by the MCP tool.
 - The analyzer adapter and response transformer are covered by local unit tests.
 
+## Security
+
+- **Path allowlist (always on)**: `/analyze` only accepts a `projectPath` under
+  `ADVANCED_PYEXAMINE_ALLOWED_ROOTS` (comma-separated directories). When unset it
+  falls back to `ADVANCED_PYEXAMINE_SOURCE_DIR`; when neither is set every request
+  is rejected with 403. Paths are `realpath`-normalized first, so `..` and symlink
+  escapes are blocked. To analyze a project outside the source dir (local dev),
+  add it explicitly: `ADVANCED_PYEXAMINE_ALLOWED_ROOTS="/path/to/project"`.
+- **Shared-secret auth (opt-in)**: when `ADVANCED_PYEXAMINE_SHARED_SECRET` is set,
+  `/analyze` requires a matching `X-Internal-Token` header (constant-time compare;
+  401 otherwise). Callers (CodeVi backend, MCP server in http mode) must send the
+  same value. When unset the service logs a warning and skips auth — dev only.
+- `GET /health` is always unauthenticated.
+
 ## Install
 
 ```bash

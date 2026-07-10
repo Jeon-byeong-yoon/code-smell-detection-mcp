@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const path = require('path');
+const { createMcpTestClient, unwrapToolResult, getToolErrorText } = require('./mcp-test-client');
 
 const repoRoot = path.resolve(__dirname, '..');
 const serverPath = path.join(repoRoot, 'dist', 'server.js');
@@ -24,81 +25,19 @@ function startServer() {
   });
 }
 
-function createJsonLineReader(proc) {
-  let buffer = '';
-  const pending = new Map();
-
-  proc.stdout.setEncoding('utf8');
-  proc.stdout.on('data', (chunk) => {
-    buffer += chunk;
-    let newlineIndex;
-
-    while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, newlineIndex).trim();
-      buffer = buffer.slice(newlineIndex + 1);
-      if (!line) continue;
-
-      let message;
-      try {
-        message = JSON.parse(line);
-      } catch {
-        continue;
-      }
-
-      const entry = pending.get(message.id);
-      if (entry) {
-        pending.delete(message.id);
-        entry.resolve(message);
-      }
-    }
-  });
-
-  return {
-    request(id, tool, params) {
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          pending.delete(id);
-          reject(new Error(`Timed out waiting for response id=${id}`));
-        }, 10000);
-
-        pending.set(id, {
-          resolve: (message) => {
-            clearTimeout(timeout);
-            resolve(message);
-          },
-        });
-
-        proc.stdin.write(JSON.stringify({ id, tool, params }) + '\n');
-      });
-    },
-    rejectAll(error) {
-      for (const [id, entry] of pending.entries()) {
-        pending.delete(id);
-        entry.reject?.(error);
-      }
-    },
-  };
-}
-
-function unwrapOk(message) {
-  assert(!message.error, `expected no error, got ${message.error}`);
-  assert(message.result?.ok === true, `expected ok=true for ${message.id}`);
-  return message.result.result;
-}
-
 async function run() {
   console.log('Starting advanced_pyexamine smoke test...');
   const server = startServer();
-  const reader = createJsonLineReader(server);
+  const client = createMcpTestClient(server);
 
   server.on('error', (error) => {
-    reader.rejectAll(error);
+    client.rejectAll(error);
   });
 
   try {
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await client.initialize();
 
-    const full = unwrapOk(await reader.request('full', 'analyze_python_smells', {
+    const full = unwrapToolResult(await client.callTool('analyze_python_smells', {
       projectPath: '/mock/project',
     }));
     assert(full.summary.total === 4, `expected full summary total=4, got ${full.summary.total}`);
@@ -108,7 +47,7 @@ async function run() {
     assert(full.response.returnedTotal === 4, `expected returnedTotal=4, got ${full.response.returnedTotal}`);
     assert(full.response.truncated === false, 'expected full response not truncated');
 
-    const summaryOnly = unwrapOk(await reader.request('summary-only', 'analyze_python_smells', {
+    const summaryOnly = unwrapToolResult(await client.callTool('analyze_python_smells', {
       projectPath: '/mock/project',
       summaryOnly: true,
     }));
@@ -118,7 +57,7 @@ async function run() {
     assert(summaryOnly.response.returnedTotal === 0, 'expected summaryOnly returnedTotal=0');
     assert(summaryOnly.response.truncated === true, 'expected summaryOnly response truncated');
 
-    const limited = unwrapOk(await reader.request('limited', 'analyze_python_smells', {
+    const limited = unwrapToolResult(await client.callTool('analyze_python_smells', {
       projectPath: '/mock/project',
       only: 'long_method,data_clumps',
       limitPerGroup: 1,
@@ -129,6 +68,14 @@ async function run() {
     assert(limited.response.limitPerGroup === 1, 'expected response.limitPerGroup=1');
     assert(limited.response.returnedTotal === 2, `expected returnedTotal=2, got ${limited.response.returnedTotal}`);
     assert(limited.response.truncated === true, 'expected limited response truncated');
+
+    // cli 모드 인자 주입 가드: '-'로 시작하는 projectPath는 실행 전에 거부돼야 한다
+    const flagInjection = await client.callTool('analyze_python_smells', {
+      projectPath: '--help',
+    });
+    const guardError = getToolErrorText(flagInjection);
+    assert(guardError !== undefined, 'expected flag-like projectPath to be rejected');
+    assert(guardError.includes('must not start with "-"'), `expected guard message, got "${guardError}"`);
 
     console.log('advanced_pyexamine smoke test success.');
   } finally {

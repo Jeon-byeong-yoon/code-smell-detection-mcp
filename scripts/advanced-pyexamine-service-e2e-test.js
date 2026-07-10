@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const path = require('path');
+const { createMcpTestClient, unwrapToolResult } = require('./mcp-test-client');
 
 const repoRoot = path.resolve(__dirname, '..');
 const serverPath = path.join(repoRoot, 'dist', 'server.js');
@@ -20,6 +21,9 @@ function printSetupHelp() {
   console.error('     ADVANCED_PYEXAMINE_SOURCE_DIR="/path/to/pyexamine 2" npm run service:advanced-pyexamine');
   console.error('  2. Run this test with a target Python project path:');
   console.error('     ADVANCED_PYEXAMINE_E2E_PROJECT_PATH="/path/to/python/project" npm run test:advanced-pyexamine:service');
+  console.error('  Note: the service only analyzes paths under its allowed roots.');
+  console.error('  If the target is outside ADVANCED_PYEXAMINE_SOURCE_DIR, start the service with:');
+  console.error('     ADVANCED_PYEXAMINE_ALLOWED_ROOTS="/path/to/python/project" (comma-separated)');
 }
 
 async function fetchJson(url, options) {
@@ -57,63 +61,6 @@ function startMcpServer() {
   });
 }
 
-function createJsonLineReader(proc) {
-  let buffer = '';
-  const pending = new Map();
-
-  proc.stdout.setEncoding('utf8');
-  proc.stdout.on('data', (chunk) => {
-    buffer += chunk;
-    let newlineIndex;
-
-    while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, newlineIndex).trim();
-      buffer = buffer.slice(newlineIndex + 1);
-      if (!line) continue;
-
-      let message;
-      try {
-        message = JSON.parse(line);
-      } catch {
-        continue;
-      }
-
-      const entry = pending.get(message.id);
-      if (entry) {
-        pending.delete(message.id);
-        entry.resolve(message);
-      }
-    }
-  });
-
-  return {
-    request(id, tool, params) {
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          pending.delete(id);
-          reject(new Error(`Timed out waiting for MCP response id=${id}`));
-        }, 30000);
-
-        pending.set(id, {
-          resolve: (message) => {
-            clearTimeout(timeout);
-            resolve(message);
-          },
-          reject,
-        });
-
-        proc.stdin.write(JSON.stringify({ id, tool, params }) + '\n');
-      });
-    },
-    rejectAll(error) {
-      for (const [id, entry] of pending.entries()) {
-        pending.delete(id);
-        entry.reject?.(error);
-      }
-    },
-  };
-}
-
 function assertAnalysisResult(result, label) {
   assert(result.tool === 'advanced_pyexamine', `${label}: expected tool=advanced_pyexamine`);
   assert(result.language === 'python', `${label}: expected language=python`);
@@ -127,24 +74,20 @@ function assertAnalysisResult(result, label) {
 
 async function verifyMcpHttpMode() {
   const server = startMcpServer();
-  const reader = createJsonLineReader(server);
+  const client = createMcpTestClient(server, { timeoutMs: 30000 });
 
   server.on('error', (error) => {
-    reader.rejectAll(error);
+    client.rejectAll(error);
   });
 
   try {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const message = await reader.request('service-e2e', 'analyze_python_smells', {
+    await client.initialize();
+    const result = unwrapToolResult(await client.callTool('analyze_python_smells', {
       projectPath,
       only,
       summaryOnly: true,
-    });
+    }));
 
-    assert(!message.error, `MCP returned error: ${message.error}`);
-    assert(message.result?.ok === true, 'MCP response should have result.ok=true');
-
-    const result = message.result.result;
     assertAnalysisResult(result, 'mcp-http-mode');
     return result;
   } finally {

@@ -5,8 +5,12 @@ services:
     image: advanced-pyexamine-service:local
     environment:
       ADVANCED_PYEXAMINE_SOURCE_DIR: /opt/advanced-pyexamine-source
+      ADVANCED_PYEXAMINE_ALLOWED_ROOTS: /opt/advanced-pyexamine-source
+      ADVANCED_PYEXAMINE_SHARED_SECRET: ${ADVANCED_PYEXAMINE_SHARED_SECRET:-compose-example-secret}
     volumes:
       - "${ADVANCED_PYEXAMINE_HOST_SOURCE_DIR:?Set ADVANCED_PYEXAMINE_HOST_SOURCE_DIR to the advanced_pyexamine repository root}:/opt/advanced-pyexamine-source:ro"
+    cpus: 1.0
+    mem_limit: 1g
     healthcheck:
       test:
         - CMD
@@ -28,3 +32,4 @@ services:
     environment:
       ADVANCED_PYEXAMINE_MODE: http
       ADVANCED_PYEXAMINE_SERVICE_URL: http://advanced-pyexamine-service:18080
+      ADVANCED_PYEXAMINE_SHARED_SECRET: ${ADVANCED_PYEXAMINE_SHARED_SECRET:-compose-example-secret}
