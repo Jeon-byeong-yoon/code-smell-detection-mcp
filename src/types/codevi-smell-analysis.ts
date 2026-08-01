@@ -94,7 +94,7 @@ export interface SmellAnalysisJob {
   id: number;
   teamProjectId: number;
 
-  /** Jenkins/Sonar 기반 code analysis와 연결할 경우 사용 */
+  /** Jenkins 기반 code analysis와 연결할 경우 사용 */
   codeAnalysisId?: number;
   /** metric-analysis job과 연결할 경우 사용 */
   metricAnalysisJobId?: number;
