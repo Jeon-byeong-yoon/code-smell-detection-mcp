@@ -140,7 +140,7 @@ SmellAnalysisFinding
 | --- | --- | --- | --- |
 | `id` | number | yes | smell analysis job id |
 | `teamProjectId` | number | yes | CodeVi team project id |
-| `codeAnalysisId` | number | no | Jenkins/Sonar 기반 code analysis와 연결할 경우 사용 |
+| `codeAnalysisId` | number | no | Jenkins 기반 code analysis와 연결할 경우 사용 |
 | `metricAnalysisJobId` | number | no | metric-analysis job과 연결할 경우 사용 |
 | `buildNumber` | number | no | Jenkins build number |
 | `commitHash` | string | no | 분석 대상 commit |
