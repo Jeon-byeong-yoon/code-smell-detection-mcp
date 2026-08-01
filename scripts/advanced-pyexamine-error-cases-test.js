@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
+const { createMcpTestClient, getToolErrorText } = require('./mcp-test-client');
 
 const repoRoot = path.resolve(__dirname, '..');
 const serverPath = path.join(repoRoot, 'dist', 'server.js');
@@ -40,92 +41,36 @@ function startMcpServer(serviceUrl, extraEnv = {}) {
   });
 }
 
-function createJsonLineReader(proc) {
-  let buffer = '';
-  const pending = new Map();
-
-  proc.stdout.setEncoding('utf8');
-  proc.stdout.on('data', (chunk) => {
-    buffer += chunk;
-    let newlineIndex;
-
-    while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, newlineIndex).trim();
-      buffer = buffer.slice(newlineIndex + 1);
-      if (!line) continue;
-
-      let message;
-      try {
-        message = JSON.parse(line);
-      } catch {
-        continue;
-      }
-
-      const entry = pending.get(message.id);
-      if (entry) {
-        pending.delete(message.id);
-        entry.resolve(message);
-      }
-    }
-  });
-
-  return {
-    request(id, params) {
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          pending.delete(id);
-          reject(new Error(`Timed out waiting for response id=${id}`));
-        }, 10000);
-
-        pending.set(id, {
-          resolve: (message) => {
-            clearTimeout(timeout);
-            resolve(message);
-          },
-          reject,
-        });
-
-        proc.stdin.write(JSON.stringify({
-          id,
-          tool: 'analyze_python_smells',
-          params: {
-            projectPath: '/mock/project',
-            summaryOnly: true,
-            ...params,
-          },
-        }) + '\n');
-      });
-    },
-    rejectAll(error) {
-      for (const [id, entry] of pending.entries()) {
-        pending.delete(id);
-        entry.reject?.(error);
-      }
-    },
-  };
-}
-
 async function withMcpServer(serviceUrl, callback, extraEnv = {}) {
   const server = startMcpServer(serviceUrl, extraEnv);
-  const reader = createJsonLineReader(server);
+  const client = createMcpTestClient(server);
 
   server.on('error', (error) => {
-    reader.rejectAll(error);
+    client.rejectAll(error);
   });
 
   try {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    await callback(reader);
+    await client.initialize();
+    await callback(client);
   } finally {
     try { server.kill(); } catch { }
   }
 }
 
+function callAnalyze(client, params = {}) {
+  return client.callTool('analyze_python_smells', {
+    projectPath: '/mock/project',
+    summaryOnly: true,
+    ...params,
+  });
+}
+
 function assertErrorIncludes(message, expected) {
-  assert(message.error, `expected MCP error containing "${expected}"`);
+  const errorText = getToolErrorText(message);
+  assert(errorText !== undefined, `expected MCP error containing "${expected}"`);
   assert(
-    message.error.includes(expected),
-    `expected error to include "${expected}", got "${message.error}"`,
+    errorText.includes(expected),
+    `expected error to include "${expected}", got "${errorText}"`,
   );
 }
 
@@ -136,8 +81,8 @@ async function testServiceHttpError() {
   });
 
   try {
-    await withMcpServer(service.baseUrl, async (reader) => {
-      const message = await reader.request('http-500');
+    await withMcpServer(service.baseUrl, async (client) => {
+      const message = await callAnalyze(client);
       assertErrorIncludes(message, 'advanced_pyexamine service failed: analyzer exploded');
     });
   } finally {
@@ -152,8 +97,8 @@ async function testServiceInvalidJsonResponse() {
   });
 
   try {
-    await withMcpServer(service.baseUrl, async (reader) => {
-      const message = await reader.request('invalid-json');
+    await withMcpServer(service.baseUrl, async (client) => {
+      const message = await callAnalyze(client);
       assertErrorIncludes(message, 'advanced_pyexamine service response must be an object.');
     });
   } finally {
@@ -173,8 +118,8 @@ async function testServiceInvalidSchemaResponse() {
   });
 
   try {
-    await withMcpServer(service.baseUrl, async (reader) => {
-      const message = await reader.request('invalid-schema');
+    await withMcpServer(service.baseUrl, async (client) => {
+      const message = await callAnalyze(client);
       assertErrorIncludes(message, 'advanced_pyexamine service response is missing summary.');
     });
   } finally {
@@ -191,8 +136,8 @@ async function testServiceTimeout() {
   });
 
   try {
-    await withMcpServer(service.baseUrl, async (reader) => {
-      const message = await reader.request('timeout');
+    await withMcpServer(service.baseUrl, async (client) => {
+      const message = await callAnalyze(client);
       assertErrorIncludes(message, 'timeout');
     }, { ADVANCED_PYEXAMINE_SERVICE_TIMEOUT_MS: '50' });
   } finally {
@@ -207,9 +152,10 @@ async function testInvalidLimitPerGroup() {
   });
 
   try {
-    await withMcpServer(service.baseUrl, async (reader) => {
-      const message = await reader.request('invalid-limit', { limitPerGroup: 0 });
-      assertErrorIncludes(message, 'limitPerGroup must be a positive integer.');
+    await withMcpServer(service.baseUrl, async (client) => {
+      // limitPerGroup=0은 zod inputSchema가 protocol 레벨에서 거부한다
+      const message = await callAnalyze(client, { limitPerGroup: 0 });
+      assertErrorIncludes(message, 'limitPerGroup');
     });
   } finally {
     await service.close();

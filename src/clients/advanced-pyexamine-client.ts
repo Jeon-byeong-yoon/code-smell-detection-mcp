@@ -53,6 +53,7 @@ export class AdvancedPyexamineClient {
       const serviceUrl = process.env.ADVANCED_PYEXAMINE_SERVICE_URL?.trim();
       if (!serviceUrl) throw new Error('ADVANCED_PYEXAMINE_SERVICE_URL is required when ADVANCED_PYEXAMINE_MODE=http.');
 
+      const sharedSecret = process.env.ADVANCED_PYEXAMINE_SHARED_SECRET?.trim();
       const serviceTimeout = Number(process.env.ADVANCED_PYEXAMINE_SERVICE_TIMEOUT_MS ?? this.timeoutMs);
       this.serviceClient = axios.create({
         baseURL: serviceUrl,
@@ -60,6 +61,7 @@ export class AdvancedPyexamineClient {
         headers: {
           Accept: 'application/json',
           'Content-Type': 'application/json',
+          ...(sharedSecret ? { 'X-Internal-Token': sharedSecret } : {}),
         },
         validateStatus: () => true,
       });
@@ -79,6 +81,11 @@ export class AdvancedPyexamineClient {
         summaryOnly,
         ...(limitPerGroup ? { limitPerGroup } : {}),
       });
+    }
+
+    // '-'로 시작하는 값이 CLI 플래그로 해석되는 인자 주입을 차단 (shell:false라 셸 주입은 원천 불가)
+    if (projectPath.startsWith('-')) {
+      throw new Error('projectPath must not start with "-". Pass an absolute or relative directory path.');
     }
 
     const args = [

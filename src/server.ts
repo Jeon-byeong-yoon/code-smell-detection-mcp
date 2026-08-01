@@ -1,30 +1,28 @@
+#!/usr/bin/env node
 import dotenv from 'dotenv';
-dotenv.config();
+// stdout은 JSON-RPC 전용이므로 dotenv 로그를 억제한다 (quiet 미지원 버전은 무시)
+dotenv.config({ quiet: true } as Record<string, unknown>);
 
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { registerPyexamineTools } from './tools/pyexamine-tools';
 import { registerMetricsTools } from './tools/metrics-tools';
 import { registerAdvancedPyexamineTools } from './tools/advanced-pyexamine-tools';
 import { registerSmellAnalysisTools } from './tools/smell-analysis-tools';
-import { createStdIoTransport } from './stdio/stdio-transport';
-
-const LOG = console;
 
 async function main() {
-  LOG.info('Starting code-smell-detection-mcp server...');
-  // stdio transport starts and manages MCP messages
-  const transport = createStdIoTransport();
+  const server = new McpServer({ name: 'code-smell-detection-mcp', version: '0.2.0' });
 
-  // Register tool handlers (transport에 이벤트 핸들러 등록)
-  registerPyexamineTools(transport);
-  registerMetricsTools(transport);
-  registerAdvancedPyexamineTools(transport);
-  registerSmellAnalysisTools(transport);
+  registerPyexamineTools(server);
+  registerMetricsTools(server);
+  registerAdvancedPyexamineTools(server);
+  registerSmellAnalysisTools(server);
 
-  // Keep process alive while transport works
-  transport.start();
+  await server.connect(new StdioServerTransport());
+  console.error('code-smell-detection-mcp ready (stdio)');
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Fatal error starting server:', err);
   process.exit(1);
 });

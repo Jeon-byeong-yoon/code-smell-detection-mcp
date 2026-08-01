@@ -60,6 +60,8 @@ function runCommand(command, args, options = {}) {
   });
 }
 
+const TOOL_CALL_ID = 2;
+
 function parseMcpResponse(output) {
   const jsonLines = output
     .split(/\r?\n/)
@@ -69,7 +71,7 @@ function parseMcpResponse(output) {
   for (const line of jsonLines.reverse()) {
     try {
       const message = JSON.parse(line);
-      if (message.id === 'compose-e2e') {
+      if (message.jsonrpc === '2.0' && message.id === TOOL_CALL_ID) {
         return message;
       }
     } catch {
@@ -77,14 +79,17 @@ function parseMcpResponse(output) {
     }
   }
 
-  throw new Error(`Could not find compose-e2e MCP response in output:\n${output}`);
+  throw new Error(`Could not find tools/call MCP response in output:\n${output}`);
+}
+
+function unwrapToolResult(message) {
+  assert(!message.error, `expected no MCP error, got ${JSON.stringify(message.error)}`);
+  assert(message.result?.isError !== true, `expected no tool error, got ${JSON.stringify(message.result?.content)}`);
+  return message.result.structuredContent ?? JSON.parse(message.result.content[0].text);
 }
 
 function assertMcpResponse(message) {
-  assert(!message.error, `expected no MCP error, got ${message.error}`);
-  assert(message.result?.ok === true, 'expected result.ok=true');
-
-  const result = message.result.result;
+  const result = unwrapToolResult(message);
   assert(result.tool === 'advanced_pyexamine', 'expected tool=advanced_pyexamine');
   assert(result.language === 'python', 'expected language=python');
   assert(result.projectPath === projectPath, `expected projectPath=${projectPath}`);
@@ -115,27 +120,44 @@ async function run() {
   try {
     await runCommand('docker', ['compose', '-f', composeFile, 'build']);
 
-    const request = {
-      id: 'compose-e2e',
-      tool: 'analyze_python_smells',
-      params: {
-        projectPath,
-        only,
-        summaryOnly: true,
+    const messages = [
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: { name: 'compose-e2e', version: '1' },
+        },
       },
-    };
+      { jsonrpc: '2.0', method: 'notifications/initialized' },
+      {
+        jsonrpc: '2.0',
+        id: TOOL_CALL_ID,
+        method: 'tools/call',
+        params: {
+          name: 'analyze_python_smells',
+          arguments: {
+            projectPath,
+            only,
+            summaryOnly: true,
+          },
+        },
+      },
+    ];
 
     const { stdout } = await runCommand(
       'docker',
       ['compose', '-f', composeFile, 'run', '--rm', '-T', 'mcp-server'],
-      { input: `${JSON.stringify(request)}\n` },
+      { input: messages.map((message) => `${JSON.stringify(message)}\n`).join('') },
     );
 
     const message = parseMcpResponse(stdout);
     assertMcpResponse(message);
 
     console.log('advanced_pyexamine Compose E2E test success.');
-    console.log(`summary=${JSON.stringify(message.result.result.summary)}`);
+    console.log(`summary=${JSON.stringify(unwrapToolResult(message).summary)}`);
   } finally {
     await cleanup();
   }
