@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { deflateRawSync } from 'zlib';
 
 /**
@@ -107,15 +108,29 @@ export function createZip(entries: ZipEntry[]): Buffer {
   return Buffer.concat([...localChunks, central, end]);
 }
 
-/** multipart/form-data 본문 하나를 만든다 (파일 필드 1개). */
+/**
+ * multipart/form-data 본문 하나를 만든다 (파일 필드 1개).
+ *
+ * 경계 문자열은 반드시 본문에 나타나지 않아야 한다. 내용에서 유도한 값을 쓰면 안 된다 —
+ * 분석 대상 소스는 신뢰할 수 없고 CRC32는 위조가 쉬워서, 공격자가 zip 안에 경계 문자열을
+ * 심어 파트를 주입할 수 있다. 암호학적 난수로 뽑고 본문에 없음을 확인한다.
+ */
 export function createMultipartBody(
   fieldName: string,
   fileName: string,
   content: Buffer,
 ): { body: Buffer; contentType: string } {
-  // 경계 문자열은 본문에 나타나지 않아야 한다. zip은 바이너리라 충돌 가능성이 있으므로
-  // 무작위가 아닌 고정 접두사 + 내용 해시 대신, 충돌 시 재시도가 필요 없도록 긴 상수를 쓴다.
-  const boundary = `----advanced-pyexamine-${crc32(content).toString(16)}-${content.length.toString(16)}`;
+  let boundary = '';
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const candidate = `----advanced-pyexamine-${randomBytes(24).toString('hex')}`;
+    if (content.indexOf(candidate) === -1) {
+      boundary = candidate;
+      break;
+    }
+  }
+  if (!boundary) {
+    throw new Error('Failed to generate a multipart boundary absent from the payload.');
+  }
 
   const head = Buffer.from(
     `--${boundary}\r\n` +
