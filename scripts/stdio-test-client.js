@@ -1,67 +1,37 @@
 /**
- * MCP stdio smoke test (docs/mcp-sdk-migration-spec.md §6.1).
+ * MCP stdio smoke test.
  *
  * 검증 항목:
  *   1. stdout 순수성 — 모든 stdout 라인이 JSON-RPC 2.0 메시지여야 한다
  *   2. initialize 응답에 serverInfo / capabilities.tools 존재
- *   3. tools/list 응답에 도구 13종, 각각 inputSchema 보유
- *   4. tools/call(list_metric_analyses) 이 mock backend 응답을 반환
+ *   3. tools/list 응답에 analyze_python_smells 1종, inputSchema 보유
+ *   4. tools/call(analyze_python_smells) 이 mock analyzer 결과를 정규화해 반환
+ *   5. ADVANCED_PYEXAMINE_TOOL_ENABLED=false 면 도구가 0종
  */
 const { spawn } = require('child_process');
-const http = require('http');
+const path = require('path');
 const { createMcpTestClient } = require('./mcp-test-client');
 
-const EXPECTED_TOOLS = [
-  'get_code_analysis_results',
-  'get_latest_pyexamine_result',
-  'get_pyexamine_result_by_commit',
-  'get_high_severity_smells',
-  'get_smells_by_file',
-  'run_metric_analysis',
-  'list_metric_analyses',
-  'get_metric_analysis',
-  'analyze_python_smells',
-  'save_smell_analysis',
-  'list_smell_analyses',
-  'get_smell_analysis',
-  'list_smell_findings',
-];
+const EXPECTED_TOOLS = ['analyze_python_smells'];
 
-function startMockMetricsApi() {
-  const server = http.createServer((req, res) => {
-    if (req.method === 'GET' && req.url.startsWith('/analyses')) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, data: [{ jobId: 1, status: 'SUCCESS' }], meta: { total: 1 } }));
-      return;
-    }
+const repoRoot = path.join(__dirname, '..');
+const mockPath = path.join(repoRoot, 'scripts', 'mock-advanced-pyexamine.js');
+const fixturePath = path.join(repoRoot, 'test-fixtures', 'advanced-pyexamine-source', 'sample-project');
 
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, message: 'Not found', statusCode: 404 }));
-  });
-
-  return new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      resolve({
-        baseUrl: `http://127.0.0.1:${address.port}`,
-        close: () => new Promise((closeResolve) => server.close(closeResolve)),
-      });
-    });
-  });
-}
+// mock analyzer를 CLI 모드로 물려 실제 백엔드 없이 프록시 경로를 검증한다
+const analyzerEnv = {
+  ADVANCED_PYEXAMINE_MODE: 'cli',
+  ADVANCED_PYEXAMINE_BIN: process.execPath,
+  ADVANCED_PYEXAMINE_ARGS: mockPath,
+  ADVANCED_PYEXAMINE_CWD: repoRoot,
+};
 
 async function run() {
   console.log('Starting MCP stdio smoke test...');
-  const mockMetricsApi = await startMockMetricsApi();
 
   const server = spawn('node', ['dist/server.js'], {
     stdio: ['pipe', 'pipe', 'inherit'],
-    env: {
-      ...process.env,
-      ANALYSIS_API_BASE_URL: process.env.ANALYSIS_API_BASE_URL || 'http://127.0.0.1:13000',
-      METRICS_API_BASE_URL: mockMetricsApi.baseUrl,
-    },
+    env: { ...process.env, ...analyzerEnv },
   });
 
   server.stdout.setEncoding('utf8');
@@ -75,11 +45,11 @@ async function run() {
     finish();
   }, 15000);
 
-  // ADVANCED_PYEXAMINE_TOOL_ENABLED=false 시 로컬 분석 도구가 빠진 12종만 노출돼야 한다
+  // ADVANCED_PYEXAMINE_TOOL_ENABLED=false 시 도구가 노출되지 않아야 한다
   async function verifyToolFlagDisabled() {
     const server2 = spawn('node', ['dist/server.js'], {
       stdio: ['pipe', 'pipe', 'inherit'],
-      env: { ...process.env, ADVANCED_PYEXAMINE_TOOL_ENABLED: 'false' },
+      env: { ...process.env, ...analyzerEnv, ADVANCED_PYEXAMINE_TOOL_ENABLED: 'false' },
     });
 
     try {
@@ -89,8 +59,8 @@ async function run() {
 
       const list = await client.listTools();
       const names = (list.result?.tools ?? []).map((tool) => tool.name);
-      if (names.length !== EXPECTED_TOOLS.length - 1 || names.includes('analyze_python_smells')) {
-        failures.push(`TOOL_ENABLED=false expected 12 tools without analyze_python_smells, got: ${names.join(', ')}`);
+      if (names.length !== 0) {
+        failures.push(`TOOL_ENABLED=false expected 0 tools, got: ${names.join(', ')}`);
       }
     } catch (e) {
       failures.push(`TOOL_ENABLED=false check failed: ${e.message}`);
@@ -105,7 +75,6 @@ async function run() {
     finished = true;
     clearTimeout(timeoutHandle);
     try { server.kill(); } catch (e) { /* ignore */ }
-    await mockMetricsApi.close();
 
     await verifyToolFlagDisabled();
 
@@ -156,9 +125,13 @@ async function run() {
       failures.push(`tools/call returned isError content: ${JSON.stringify(msg.result.content)}`);
       return;
     }
-    const text = msg.result?.content?.[0]?.text;
-    if (typeof text !== 'string' || !text.includes('items')) {
-      failures.push(`tools/call(list_metric_analyses) returned unexpected content: ${text}`);
+    const summary = msg.result?.structuredContent?.summary;
+    if (!summary || typeof summary.total !== 'number') {
+      failures.push(`tools/call(analyze_python_smells) has no summary.total: ${JSON.stringify(msg.result)}`);
+      return;
+    }
+    if (summary.total <= 0) {
+      failures.push(`tools/call(analyze_python_smells) expected findings, got total=${summary.total}`);
     }
   }
 
@@ -195,7 +168,7 @@ async function run() {
           jsonrpc: '2.0',
           id: 3,
           method: 'tools/call',
-          params: { name: 'list_metric_analyses', arguments: {} },
+          params: { name: 'analyze_python_smells', arguments: { projectPath: fixturePath } },
         });
       } else if (msg.id === 3) {
         checkToolCall(msg);

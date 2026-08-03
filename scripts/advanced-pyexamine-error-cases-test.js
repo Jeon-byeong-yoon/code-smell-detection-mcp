@@ -4,6 +4,7 @@ const path = require('path');
 const { createMcpTestClient, getToolErrorText } = require('./mcp-test-client');
 
 const repoRoot = path.resolve(__dirname, '..');
+const fixturePath = path.join(repoRoot, 'test-fixtures', 'advanced-pyexamine-source', 'sample-project');
 const serverPath = path.join(repoRoot, 'dist', 'server.js');
 
 function assert(condition, message) {
@@ -59,7 +60,7 @@ async function withMcpServer(serviceUrl, callback, extraEnv = {}) {
 
 function callAnalyze(client, params = {}) {
   return client.callTool('analyze_python_smells', {
-    projectPath: '/mock/project',
+    projectPath: fixturePath,
     summaryOnly: true,
     ...params,
   });
@@ -99,7 +100,7 @@ async function testServiceInvalidJsonResponse() {
   try {
     await withMcpServer(service.baseUrl, async (client) => {
       const message = await callAnalyze(client);
-      assertErrorIncludes(message, 'advanced_pyexamine service response must be an object.');
+      assertErrorIncludes(message, 'advanced_pyexamine service returned a non-object response.');
     });
   } finally {
     await service.close();
@@ -109,18 +110,13 @@ async function testServiceInvalidJsonResponse() {
 async function testServiceInvalidSchemaResponse() {
   const service = await startMockService((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      tool: 'advanced_pyexamine',
-      language: 'python',
-      projectPath: '/mock/project',
-      response: { summaryOnly: true, returnedTotal: 0, truncated: true },
-    }));
+    res.end(JSON.stringify({ summary: { total: 0 } }));
   });
 
   try {
     await withMcpServer(service.baseUrl, async (client) => {
       const message = await callAnalyze(client);
-      assertErrorIncludes(message, 'advanced_pyexamine service response is missing summary.');
+      assertErrorIncludes(message, 'advanced_pyexamine service response has no "results" array.');
     });
   } finally {
     await service.close();
