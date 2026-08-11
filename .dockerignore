@@ -16,5 +16,3 @@ __pycache__
 venv
 
 # Service-local generated files
-services/advanced-pyexamine/app/__pycache__
-services/advanced-pyexamine/tests/__pycache__

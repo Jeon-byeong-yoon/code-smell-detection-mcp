@@ -1,6 +1,8 @@
 import { spawn } from 'child_process';
 import axios, { AxiosInstance } from 'axios';
+import fs from 'fs/promises';
 import path from 'path';
+import { createMultipartBody, createZip, ZipEntry } from '../zip';
 
 export type AdvancedPyexamineSummary = {
   total: number;
@@ -31,6 +33,17 @@ type SpawnResult = {
 };
 
 type AdvancedPyexamineMode = 'cli' | 'http';
+
+
+// 소스 수집에서 제외할 디렉토리 — 분석 가치가 없고 업로드 용량만 키운다
+const SKIPPED_DIRECTORIES = new Set([
+  '.git', '.hg', '.svn', '.tox', '.nox', '.mypy_cache', '.pytest_cache', '.ruff_cache',
+  '__pycache__', 'node_modules', 'venv', '.venv', 'env', '.env', 'site-packages',
+  'dist', 'build', '.eggs', '.idea', '.vscode',
+]);
+
+const DEFAULT_MAX_UPLOAD_FILES = 2000;
+const DEFAULT_MAX_UPLOAD_BYTES = 20_000_000;
 
 export class AdvancedPyexamineClient {
   private readonly mode: AdvancedPyexamineMode;
@@ -65,8 +78,11 @@ export class AdvancedPyexamineClient {
         },
         validateStatus: () => true,
       });
+
     }
   }
+
+
 
   async analyzePythonSmells(payload: Record<string, unknown>): Promise<AdvancedPyexamineResult> {
     const projectPath = this.getRequiredString(payload.projectPath, 'projectPath');
@@ -75,8 +91,7 @@ export class AdvancedPyexamineClient {
     const limitPerGroup = this.parseOptionalPositiveInteger(payload.limitPerGroup, 'limitPerGroup');
 
     if (this.mode === 'http') {
-      return this.analyzePythonSmellsWithHttp({
-        projectPath,
+      return this.analyzeViaService(projectPath, {
         ...(only ? { only } : {}),
         summaryOnly,
         ...(limitPerGroup ? { limitPerGroup } : {}),
@@ -120,15 +135,198 @@ export class AdvancedPyexamineClient {
     };
   }
 
-  private async analyzePythonSmellsWithHttp(payload: Record<string, unknown>): Promise<AdvancedPyexamineResult> {
+
+  /** 수집한 소스를 zip 엔트리로 변환한다. */
+  private async collectPythonSourceEntries(projectPath: string): Promise<ZipEntry[]> {
+    const files = await this.collectPythonSources(projectPath);
+    return Object.entries(files).map(([relativePath, content]) => ({
+      path: relativePath,
+      content: Buffer.from(content, 'utf8'),
+    }));
+  }
+
+  /**
+   * projectPath 아래의 .py 소스를 모아 `상대경로 -> 내용` 맵으로 만든다.
+   *
+   * 업로드 용량이 곧 지연·비용이므로 가상환경·캐시·VCS 디렉토리는 건너뛴다.
+   * 상한을 넘으면 잘라내지 않고 실패시킨다 — 조용히 일부만 분석하면
+   * 사용자는 "스멜이 없다"로 오해한다.
+   */
+  private async collectPythonSources(projectPath: string): Promise<Record<string, string>> {
+    const root = path.resolve(projectPath);
+
+    let stats;
+    try {
+      stats = await fs.stat(root);
+    } catch {
+      throw new Error(`projectPath does not exist: ${projectPath}`);
+    }
+    if (!stats.isDirectory()) {
+      throw new Error(`projectPath must be a directory: ${projectPath}`);
+    }
+
+    const maxFiles = this.parseLimitEnv('ADVANCED_PYEXAMINE_MAX_UPLOAD_FILES', DEFAULT_MAX_UPLOAD_FILES);
+    const maxBytes = this.parseLimitEnv('ADVANCED_PYEXAMINE_MAX_UPLOAD_BYTES', DEFAULT_MAX_UPLOAD_BYTES);
+
+    const files: Record<string, string> = {};
+    let totalBytes = 0;
+    let fileCount = 0;
+
+    const walk = async (directory: string): Promise<void> => {
+      const entries = await fs.readdir(directory, { withFileTypes: true });
+
+      for (const entry of entries) {
+        // 심링크는 따라가지 않는다 (순환·의도치 않은 외부 반출 방지)
+        if (entry.isSymbolicLink()) continue;
+
+        const absolute = path.join(directory, entry.name);
+
+        if (entry.isDirectory()) {
+          if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
+          await walk(absolute);
+          continue;
+        }
+
+        if (!entry.isFile() || !entry.name.endsWith('.py')) continue;
+
+        fileCount += 1;
+        if (fileCount > maxFiles) {
+          throw new Error(
+            `too many Python files to upload (limit ${maxFiles}). ` +
+            'Analyze a subdirectory or raise ADVANCED_PYEXAMINE_MAX_UPLOAD_FILES.',
+          );
+        }
+
+        const content = await fs.readFile(absolute, 'utf8');
+        totalBytes += Buffer.byteLength(content, 'utf8');
+        if (totalBytes > maxBytes) {
+          throw new Error(
+            `Python sources exceed the upload limit of ${maxBytes} bytes. ` +
+            'Analyze a subdirectory or raise ADVANCED_PYEXAMINE_MAX_UPLOAD_BYTES.',
+          );
+        }
+
+        files[path.relative(root, absolute).split(path.sep).join('/')] = content;
+      }
+    };
+
+    await walk(root);
+
+    if (fileCount === 0) {
+      throw new Error(`No Python files found under projectPath: ${projectPath}`);
+    }
+
+    return files;
+  }
+
+  private parseLimitEnv(name: string, fallback: number): number {
+    const raw = process.env[name]?.trim();
+    if (!raw) return fallback;
+
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`${name} must be a positive number.`);
+    }
+    return value;
+  }
+
+  /**
+   * 로컬 소스를 zip으로 묶어 analyzer service에 올리고 결과를 정규화한다.
+   *
+   * service는 엔드유저의 파일시스템을 보지 못하므로 경로가 아니라 내용을 보낸다.
+   * `only` / `summaryOnly` / `limitPerGroup`은 service가 지원하지 않아 여기서 적용한다.
+   */
+  private async analyzeViaService(
+    projectPath: string,
+    options: { only?: string; summaryOnly: boolean; limitPerGroup?: number },
+  ): Promise<AdvancedPyexamineResult> {
     if (!this.serviceClient) throw new Error('advanced_pyexamine HTTP service client is not configured.');
 
-    const response = await this.serviceClient.post('/analyze', payload);
+    const entries = await this.collectPythonSourceEntries(projectPath);
+    const archive = createZip(entries);
+    const { body, contentType } = createMultipartBody('file', 'sources.zip', archive);
+
+    const response = await this.serviceClient.post('/analyze', body, {
+      headers: { 'Content-Type': contentType },
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    });
+
     if (response.status < 200 || response.status >= 300) {
       throw new Error(`advanced_pyexamine service failed: ${this.readHttpError(response.data, response.status)}`);
     }
 
-    return this.parseServiceResult(response.data);
+    const smellGroups = this.groupServiceResults(response.data, options.only);
+    const summary = this.summarize(smellGroups);
+    const returnedGroups = options.summaryOnly
+      ? undefined
+      : this.limitGroups(smellGroups, options.limitPerGroup);
+    const returnedTotal = returnedGroups ? this.countSmells(returnedGroups) : 0;
+
+    return {
+      tool: 'advanced_pyexamine',
+      language: 'python',
+      projectPath,
+      ...(options.only ? { only: options.only } : {}),
+      ...(returnedGroups ? { smellGroups: returnedGroups } : {}),
+      summary,
+      response: {
+        summaryOnly: options.summaryOnly,
+        ...(options.limitPerGroup ? { limitPerGroup: options.limitPerGroup } : {}),
+        returnedTotal,
+        truncated: returnedTotal < summary.total,
+      },
+    };
+  }
+
+  /**
+   * service 응답(`{summary, results[]}`)을 detector 이름별 그룹으로 바꾼다.
+   *
+   * service는 평평한 results 배열을 주고 detector 필터도 없다.
+   * 도구 계약(smellGroups)을 유지하려면 이 변환이 필요하다.
+   */
+  private groupServiceResults(data: unknown, only?: string): Record<string, unknown[]> {
+    if (!data || typeof data !== 'object') {
+      throw new Error('advanced_pyexamine service returned a non-object response.');
+    }
+
+    const results = (data as { results?: unknown }).results;
+    if (!Array.isArray(results)) {
+      throw new Error('advanced_pyexamine service response has no "results" array.');
+    }
+
+    const wanted = only
+      ? new Set(only.split(',').map((name) => name.trim()).filter(Boolean))
+      : undefined;
+
+    const groups: Record<string, unknown[]> = {};
+
+    for (const item of results) {
+      if (!item || typeof item !== 'object') continue;
+      const raw = item as Record<string, unknown>;
+
+      const name = typeof raw.name === 'string' ? raw.name : 'unknown';
+      if (wanted && !wanted.has(name)) continue;
+
+      const lineNumber = typeof raw.lineNumber === 'number' ? raw.lineNumber : null;
+
+      (groups[name] ??= []).push({
+        name,
+        category: raw.type ?? null,
+        entity: raw['Module/Class'] ?? null,
+        location: {
+          file: raw.file ?? null,
+          line_start: lineNumber,
+          line_end: lineNumber,
+        },
+        severity: typeof raw.severity === 'string' ? raw.severity : 'unknown',
+        metrics: {},
+        related_locations: [],
+        message: raw.description ?? null,
+      });
+    }
+
+    return groups;
   }
 
   private run(args: string[]): Promise<SpawnResult> {

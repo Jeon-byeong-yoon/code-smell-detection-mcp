@@ -5,18 +5,12 @@ dotenv.config({ quiet: true } as Record<string, unknown>);
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { registerPyexamineTools } from './tools/pyexamine-tools';
-import { registerMetricsTools } from './tools/metrics-tools';
 import { registerAdvancedPyexamineTools } from './tools/advanced-pyexamine-tools';
-import { registerSmellAnalysisTools } from './tools/smell-analysis-tools';
 
 async function main() {
-  const server = new McpServer({ name: 'code-smell-detection-mcp', version: '0.2.0' });
+  const server = new McpServer({ name: 'code-smell-detection-mcp', version: '0.3.0' });
 
-  registerPyexamineTools(server);
-  registerMetricsTools(server);
   registerAdvancedPyexamineTools(server);
-  registerSmellAnalysisTools(server);
 
   await server.connect(new StdioServerTransport());
   console.error('code-smell-detection-mcp ready (stdio)');
